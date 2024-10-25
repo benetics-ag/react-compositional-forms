@@ -12,9 +12,7 @@ export function shallowEqual(objA: any, objB: any): boolean {
     return false;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const keysA = Object.keys(objA);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   const keysB = Object.keys(objB);
 
   if (keysA.length !== keysB.length) {
