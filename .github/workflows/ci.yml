@@ -1,0 +1,25 @@
+name: ci
+on:
+    pull_request:
+      branches:
+        - main
+    
+jobs:
+  lint-type-check-and-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          cache-dependency-path: yarn.lock
+      - name: Install yarn dependencies
+        run: yarn install --frozen-lockfile
+      - name: Type check
+        run: yarn run tsc:no-emit
+      - name: Run lint
+        run: yarn lint
+      - name: Run tests
+        run: yarn test
