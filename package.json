@@ -6,6 +6,7 @@
   "scripts": {
     "build": "rollup -c",
     "lint": "eslint .",
+    "prepare": "yarn build",
     "test": "jest",
     "tsc:no-emit": "tsc --noEmit --noErrorTruncation --pretty"
   },
