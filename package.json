@@ -4,7 +4,8 @@
   "license": "MIT",
   "description": "Packages shared between app and web",
   "scripts": {
-    "build": "rollup -c",
+    "build": "yarn clean && rollup -c",
+    "clean": "rm -rf dist/*",
     "lint": "eslint .",
     "prepare": "yarn build",
     "test": "jest",
