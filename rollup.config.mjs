@@ -5,6 +5,7 @@ import packageJson from './package.json' assert {type: 'json'};
 export default [
   {
     input: 'src/index.tsx',
+    external: ['react'],
     output: [
       {
         file: packageJson.exports['.'].import,
@@ -21,6 +22,7 @@ export default [
   },
   {
     input: 'src/validation.ts',
+    external: ['react'],
     output: [
       {
         file: packageJson.exports['./validation'].import,
