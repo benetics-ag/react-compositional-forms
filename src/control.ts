@@ -8,10 +8,9 @@ export type InternalFieldState = {
   isDirty: boolean;
 };
 
-type ControlOnChange<T, C> = (
+export type ControlOnChange<T> = (
   newValue: T,
   fieldState: InternalFieldState,
-  context: C,
 ) => void;
 
 export type ResetOptions = {
@@ -64,35 +63,14 @@ export type FieldRef<T> = {
   validate: () => void;
 };
 
-// TODO(tibbe): Ideally we'd use existential quantification instead of `any` in
-// the definition of `Control` for improved type safety but TypeScript doesn't
-// support that yet (https://github.com/Microsoft/TypeScript/issues/14466).
-// Ideally we'd write something like:
-//
-// export type Control<T> = <exists C>{
-//   context: C;
-//   onChange: ControlOnChange<T, C>;
-//   // ...
-// };
-//
-// `C` being the existential type variable.
-//
-// There is a workaround using continuations
-// (https://github.com/Microsoft/TypeScript/issues/14466#issuecomment-338045331)
-// but it's not very readable and introduces an additional wrapping function
-// that that might or might not interfer with `React.memo`.
-
 /**
  * Internal form state used to connect parent and child forms.
  *
  * All fields on this type should be considered private and subject to change.
  */
 export type Control<T> = {
-  /** An opaque context that should be passed to {@link Control.onChange}. */
-  context: any;
-
   /** Called by child to tell parent its state has changed. */
-  onChange: ControlOnChange<T, any>;
+  onChange: ControlOnChange<T>;
 
   /** A ref for the child to set */
   ref?: React.Ref<FieldRef<T>>;
