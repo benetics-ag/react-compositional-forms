@@ -273,7 +273,7 @@ export type UseFieldArrayReturn<T> = {
 export const useFieldArray = <T>({
   control,
 }: UseFieldArrayProps<T>): UseFieldArrayReturn<T> => {
-  const {context, onChange, ref, initialValue, value, validationMode} = control;
+  const {onChange, ref, initialValue, value, validationMode} = control;
 
   // Cached values of child fields:
   // - `dirtyBits` is a boolean array that tracks which elements are dirty and
@@ -320,16 +320,12 @@ export const useFieldArray = <T>({
       const newValue = value.map((v, i) => (i === index ? newItemValue : v));
       dirtyBits.current = dirtyBits.current.set(index, isDirty);
       fieldErrors.current = fieldErrors.current.set(index, newErrors);
-      onChange(
-        newValue,
-        {
-          isDirty:
-            newValue.length !== initialValue.length ||
-            dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
-        },
-        context,
-      );
+      onChange(newValue, {
+        isDirty:
+          newValue.length !== initialValue.length ||
+          dirtyBits.current.isAnyTrue,
+        errors: fieldErrors.current.allErrors,
+      });
     },
   );
 
@@ -337,15 +333,14 @@ export const useFieldArray = <T>({
     () =>
       value.map((v, index) => ({
         control: {
-          context: index,
-          onChange: onChangeItem,
+          onChange: (...args) => onChangeItem(...args, index),
           ref: (childRef: FieldRef<T>) => {
             childRefs.current[index] = childRef;
           },
           // TODO(tibbe): Should we instead have an `initialItemValue` prop on
           // `useFieldArray`.
-          initialValue: initialValue[index] ?? value[index],
-          value: value[index],
+          initialValue: initialValue[index] ?? v,
+          value: v,
           validationMode,
         },
       })),
@@ -375,21 +370,17 @@ export const useFieldArray = <T>({
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
         // current state corresponds to what has been communicated to the parent
         // aren't valid.
-        onChange(
-          nextValue,
-          {
-            isDirty: dirtyBits.current.isAnyTrue,
-            errors: fieldErrors.current.allErrors,
-          },
-          context,
-        );
+        onChange(nextValue, {
+          isDirty: dirtyBits.current.isAnyTrue,
+          errors: fieldErrors.current.allErrors,
+        });
 
         childRefs.current.forEach((childRef, index) =>
           childRef?.reset(nextValue[index]),
         );
       }
     },
-    [context, initialValue, onChange, value.length],
+    [initialValue, onChange, value.length],
   );
 
   const setValueMethod: FieldRefSetValue<T[]> = React.useCallback(
@@ -419,16 +410,12 @@ export const useFieldArray = <T>({
 
       // We can't rely on future calls to `onChangeItem` to propagate the change
       // as if we e.g. remove all rows we won't get any calls.
-      onChange(
-        newValue,
-        {
-          isDirty:
-            newValue.length !== initialValue.length ||
-            dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
-        },
-        context,
-      );
+      onChange(newValue, {
+        isDirty:
+          newValue.length !== initialValue.length ||
+          dirtyBits.current.isAnyTrue,
+        errors: fieldErrors.current.allErrors,
+      });
 
       // If we added new children some of the refs might be null. These new
       // children will be initialized to the correct value when they are created
@@ -437,7 +424,7 @@ export const useFieldArray = <T>({
         childRefs.current[i]?.setValue(newValue[i], options);
       }
     },
-    [context, initialValue.length, onChange, value],
+    [initialValue.length, onChange, value],
   );
 
   const validateMethod = React.useCallback(
@@ -462,18 +449,14 @@ export const useFieldArray = <T>({
       dirtyBits.current = dirtyBits.current.push(false);
       fieldErrors.current = fieldErrors.current.push(NO_FIELD_ERRORS);
       childRefs.current = [...childRefs.current, null];
-      onChange(
-        newValue,
-        {
-          isDirty:
-            newValue.length !== initialValue.length ||
-            dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
-        },
-        context,
-      );
+      onChange(newValue, {
+        isDirty:
+          newValue.length !== initialValue.length ||
+          dirtyBits.current.isAnyTrue,
+        errors: fieldErrors.current.allErrors,
+      });
     },
-    [context, initialValue.length, onChange, value],
+    [initialValue.length, onChange, value],
   );
 
   const remove = React.useCallback(
@@ -486,18 +469,14 @@ export const useFieldArray = <T>({
       dirtyBits.current = dirtyBits.current.remove(index);
       fieldErrors.current = fieldErrors.current.remove(index);
       childRefs.current.filter((_, i) => i !== index);
-      onChange(
-        newValue,
-        {
-          isDirty:
-            newValue.length !== initialValue.length ||
-            dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
-        },
-        context,
-      );
+      onChange(newValue, {
+        isDirty:
+          newValue.length !== initialValue.length ||
+          dirtyBits.current.isAnyTrue,
+        errors: fieldErrors.current.allErrors,
+      });
     },
-    [context, initialValue.length, onChange, value],
+    [initialValue.length, onChange, value],
   );
 
   return React.useMemo(

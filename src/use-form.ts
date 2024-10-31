@@ -158,7 +158,6 @@ export const useForm = <T>({
   const ref = React.useRef<FieldRef<T> | null>(null);
   const control = React.useMemo(
     () => ({
-      context: null,
       onChange,
       ref,
       initialValue,

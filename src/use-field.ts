@@ -126,7 +126,7 @@ export const useField = <T>({
   control,
   validate,
 }: UseFieldProps<T>): UseFieldReturn<T> => {
-  const {context, onChange, ref, initialValue, value, validationMode} = control;
+  const {onChange, ref, initialValue, value, validationMode} = control;
 
   // Dirty state:
   const isDirty = React.useMemo(
@@ -141,8 +141,8 @@ export const useField = <T>({
 
   // Notify parent of changes:
   React.useEffect(
-    () => onChange(value, {isDirty, errors}, context),
-    [value, isDirty, errors, context, onChange],
+    () => onChange(value, {isDirty, errors}),
+    [value, isDirty, errors, onChange],
   );
 
   // Optimization: we keep track of the previous errors and only return a
@@ -182,7 +182,7 @@ export const useField = <T>({
     if (validationMode === 'onChange') {
       validateAndSetErrors(newValue);
     }
-    onChange(newValue, {isDirty, errors}, context);
+    onChange(newValue, {isDirty, errors});
   });
 
   const reset = React.useCallback(() => {

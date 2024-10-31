@@ -2,6 +2,7 @@ import React from 'react';
 
 import {
   Control,
+  ControlOnChange,
   FieldRef,
   FieldRefSetValue,
   InternalFieldState,
@@ -153,7 +154,7 @@ export type UseFieldObjectReturn<O extends object> = {
 export const useFieldObject = <O extends {[prop: string]: unknown}>({
   control,
 }: UseFieldObjectProps<O>): UseFieldObjectReturn<O> => {
-  const {context, onChange, ref, initialValue, validationMode, value} = control;
+  const {onChange, ref, initialValue, validationMode, value} = control;
 
   // Cached values of child fields:
   // - `dirtyBits` is a boolean object that tracks which elements are dirty and
@@ -205,26 +206,23 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
       const newValue = {...value, [key]: newItemValue};
       dirtyBits.current = dirtyBits.current.set(key, isDirty);
       fieldErrors.current = fieldErrors.current.set(key, newErrors);
-      onChange(
-        newValue,
-        {
-          isDirty: dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
-        },
-        context,
-      );
+      onChange(newValue, {
+        isDirty: dirtyBits.current.isAnyTrue,
+        errors: fieldErrors.current.allErrors,
+      });
     },
   );
 
+  type ControlOnChangeArgs = Parameters<ControlOnChange<O[keyof O & string]>>;
   const fields = React.useMemo<UseFieldObjectReturn<O>['fields']>(
     () =>
       Object.fromEntries(
-        Object.keys(initialValue).map((key: keyof O) => [
+        Object.keys(initialValue).map((key: keyof O & string) => [
           key,
           {
             control: {
-              context: key,
-              onChange: onChangeItem,
+              onChange: (...args: ControlOnChangeArgs) =>
+                onChangeItem(...args, key),
               ref: (childRef: FieldRef<O[keyof O]>) => {
                 childRefs.current[key] = childRef;
               },
@@ -251,21 +249,17 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
         // current state corresponds to what has been communicated to the parent
         // aren't valid.
-        onChange(
-          nextInitialValue,
-          {
-            isDirty: false,
-            errors: fieldErrors.current.allErrors,
-          },
-          context,
-        );
+        onChange(nextInitialValue, {
+          isDirty: false,
+          errors: fieldErrors.current.allErrors,
+        });
 
         Object.entries(childRefs.current).forEach(([key, childRef]) =>
           childRef?.reset(nextInitialValue[key as keyof O]),
         );
       }
     },
-    [context, initialValue, onChange],
+    [initialValue, onChange],
   );
 
   const setValue: FieldRefSetValue<{[P in keyof O]: O[P]}> = React.useCallback(
