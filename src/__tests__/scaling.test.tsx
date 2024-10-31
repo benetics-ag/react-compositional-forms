@@ -5,13 +5,10 @@ import userEvent from '@testing-library/user-event';
 
 import {
   Control,
-  Field,
-  FieldArray,
-  FieldArrayRenderProps,
-  FieldObject,
-  FieldObjectRenderProps,
-  FieldRenderProps,
   NO_FIELD_ERRORS,
+  useField,
+  useFieldArray,
+  useFieldObject,
   useForm,
 } from '..';
 
@@ -39,42 +36,37 @@ const TextField = ({
   control: Control<string>;
   testID?: string;
 }) => {
-  const renderField = React.useCallback(
-    ({field: {onChange, value}}: FieldRenderProps<string>) => (
-      <input
-        onChange={e => onChange(e.target.value)}
-        value={value}
-        data-testid={testID}
-      />
-    ),
-    [testID],
-  );
   const validate = React.useCallback(
     (value: string) =>
       value.length > 0 ? NO_FIELD_ERRORS : new Set([{message: 'Required'}]),
     [],
   );
+  const {
+    field: {onChange, value},
+  } = useField({control, validate});
 
-  return <Field control={control} render={renderField} validate={validate} />;
+  return (
+    <input
+      onChange={e => onChange(e.target.value)}
+      value={value}
+      data-testid={testID}
+    />
+  );
 };
 
 const Record = ({control, testID}: {control: Control<Row>; testID: string}) => {
-  const renderObject = React.useCallback(
-    ({fields}: FieldObjectRenderProps<Row>) => (
-      <div>
-        {Object.entries(fields).map(([key, {control: controlField}]) => (
-          <TextField
-            key={key}
-            control={controlField}
-            testID={`${testID}-${key}`}
-          />
-        ))}
-      </div>
-    ),
-    [testID],
+  const {fields} = useFieldObject({control});
+  return (
+    <div>
+      {Object.entries(fields).map(([key, {control: controlField}]) => (
+        <TextField
+          key={key}
+          control={controlField}
+          testID={`${testID}-${key}`}
+        />
+      ))}
+    </div>
   );
-
-  return <FieldObject control={control} render={renderObject} />;
 };
 
 const LoadTest = () => {
@@ -85,8 +77,10 @@ const LoadTest = () => {
     initialValue: [],
   });
 
-  const renderRows = React.useCallback(
-    ({append, fields}: FieldArrayRenderProps<Row>) => (
+  const {append, fields} = useFieldArray({control: controlForm});
+
+  return (
+    <div>
       <div>
         {fields.map(({control: controlRow}, index) => (
           <Record control={controlRow} key={index} testID={`input-${index}`} />
@@ -109,13 +103,6 @@ const LoadTest = () => {
           title="add row"
         />
       </div>
-    ),
-    [],
-  );
-
-  return (
-    <div>
-      <FieldArray control={controlForm} render={renderRows} />
       {formIsDirty ? <p>Form dirty</p> : null}
     </div>
   );

@@ -3,7 +3,7 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {Field, FieldError, NO_FIELD_ERRORS, useForm} from '..';
+import {FieldError, NO_FIELD_ERRORS, useField, useForm} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
 
@@ -39,27 +39,23 @@ const FieldTest = ({
   const onSuccess = React.useCallback(() => setSubmitStatus('success'), []);
   const onInvalid = React.useCallback(() => setSubmitStatus('failure'), []);
 
+  const {
+    fieldState: {errors, isDirty},
+    field: {onBlur, onChange, value},
+  } = useField({control, validate});
+
   return (
     <div>
-      <Field
-        control={control}
-        render={({
-          fieldState: {errors, isDirty},
-          field: {onBlur, onChange, value},
-        }) => (
-          <div>
-            <input
-              onBlur={onBlur}
-              onChange={e => onChange(e.target.value)}
-              value={value}
-              data-testid="input"
-            />
-            {isDirty ? <p>Dirty</p> : null}
-            {errors.size > 0 ? <p>Errors: {stringifyErrors(errors)}</p> : null}
-          </div>
-        )}
-        validate={validate}
-      />
+      <div>
+        <input
+          onBlur={onBlur}
+          onChange={e => onChange(e.target.value)}
+          value={value}
+          data-testid="input"
+        />
+        {isDirty ? <p>Dirty</p> : null}
+        {errors.size > 0 ? <p>Errors: {stringifyErrors(errors)}</p> : null}
+      </div>
       <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
         onClick={() => reset(undefined, {keepDirtyValues: true})}

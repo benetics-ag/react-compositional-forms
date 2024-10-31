@@ -3,9 +3,10 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {Field, FieldArray, NO_FIELD_ERRORS, useForm} from '..';
+import {NO_FIELD_ERRORS, useFieldArray, useForm} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
+import TextField from '../test-helpers/TextField';
 
 jest.useFakeTimers();
 const user = userEvent.setup({advanceTimers: jest.advanceTimersByTime});
@@ -30,50 +31,30 @@ const ArrayTest = ({
   const onSuccess = React.useCallback(() => setSubmitStatus('success'), []);
   const onInvalid = React.useCallback(() => setSubmitStatus('failure'), []);
 
+  const {append, fields, remove} = useFieldArray({control: controlForm});
+
   return (
     <div>
-      <FieldArray
-        control={controlForm}
-        render={({append, fields, remove}) => (
-          <div>
-            {fields.map(({control: controlField}, index) => (
-              <Field
-                key={index}
-                control={controlField}
-                render={({
-                  fieldState: {errors, isDirty},
-                  field: {onBlur, onChange, value},
-                }) => (
-                  <div>
-                    <input
-                      onBlur={onBlur}
-                      onChange={e => onChange(e.target.value)}
-                      value={value}
-                      data-testid={`input-${index}`}
-                    />
-                    <button
-                      onClick={() => remove(index)}
-                      title={`remove row ${index}`}
-                    />
-                    {isDirty ? <p>Field {index} dirty</p> : null}
-                    {errors.size > 0 ? (
-                      <p>
-                        Field {index} errors: {stringifyErrors(errors)}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-                validate={value =>
-                  value.length > 0
-                    ? NO_FIELD_ERRORS
-                    : new Set([{message: 'Required'}])
-                }
-              />
-            ))}
-            <button onClick={() => append('')} title="add row" />
+      <div>
+        {fields.map(({control: controlField}, index) => (
+          <div key={index}>
+            <TextField
+              name={index.toString()}
+              parentControl={controlField}
+              validate={value =>
+                value.length > 0
+                  ? NO_FIELD_ERRORS
+                  : new Set([{message: 'Required'}])
+              }
+            />
+            <button
+              onClick={() => remove(index)}
+              title={`remove row ${index}`}
+            />
           </div>
-        )}
-      />
+        ))}
+        <button onClick={() => append('')} title="add row" />
+      </div>
       <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
         onClick={() => reset(undefined, {keepDirtyValues: true})}
