@@ -45,6 +45,16 @@ export type FormState = {
    * Will remain `true` until the `reset` method is invoked. */
   isSubmitted: boolean;
 
+  /**
+   * Indicate the form was successfully submitted without any errors.
+   *
+   * Both validation errors and exceptions raised by the `onValid` argument to
+   * `handleSubmit` count as errors.
+   *
+   * Initially `false` and set after each call to `handleSubmit`.
+   */
+  isSubmitSuccessful: boolean;
+
   /** True if the form is currently submitting, otherwise false. */
   isSubmitting: boolean;
 
@@ -130,6 +140,7 @@ export const useForm = <T>({
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isSubmitted, setIsSubmitted] = React.useState(false);
+  const [isSubmitSuccessful, setIsSubmitSuccessful] = React.useState(false);
   const isValid = React.useMemo(() => errors.size === 0, [errors]);
   // On `reset` we might change the initial value and thus we need a local copy.
   const [initialValue, setInitialValue] = React.useState(initialInitialValue);
@@ -177,6 +188,7 @@ export const useForm = <T>({
   const handleSubmit: UseFormHandleSubmit<T> = React.useCallback(
     (onValid, onInvalid) => async (e?: React.BaseSyntheticEvent) => {
       setIsSubmitting(true);
+      setIsSubmitSuccessful(false);
       try {
         if (e) {
           e.preventDefault?.();
@@ -185,6 +197,7 @@ export const useForm = <T>({
         const allErrors = ref.current?.validate() ?? NO_FIELD_ERRORS;
         if (allErrors.size === 0) {
           await onValid(value, e);
+          setIsSubmitSuccessful(true);
         } else if (onInvalid) {
           await onInvalid(allErrors, e);
         }
@@ -198,6 +211,7 @@ export const useForm = <T>({
 
   const reset = useEventCallback((newValue?: T, options?: ResetOptions) => {
     setIsSubmitted(false);
+    setIsSubmitSuccessful(false);
     const {keepDirtyValues = false} = options || {};
     if (newValue !== undefined) {
       setInitialValue(newValue);
@@ -210,8 +224,15 @@ export const useForm = <T>({
   });
 
   const formState = React.useMemo(
-    () => ({errors, isDirty, isSubmitted, isSubmitting, isValid}),
-    [errors, isDirty, isSubmitted, isSubmitting, isValid],
+    () => ({
+      errors,
+      isDirty,
+      isSubmitted,
+      isSubmitSuccessful,
+      isSubmitting,
+      isValid,
+    }),
+    [errors, isDirty, isSubmitSuccessful, isSubmitted, isSubmitting, isValid],
   );
 
   const trigger = React.useCallback(() => {
