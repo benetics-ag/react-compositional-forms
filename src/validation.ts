@@ -2,7 +2,7 @@
  * Helpers for constructing validation functions for common cases.
  */
 
-import {FieldError, NO_FIELD_ERRORS} from '.';
+import {FieldError, NO_FIELD_ERRORS} from './field-errors';
 
 type ValueMessage<T> = {
   value: T;
