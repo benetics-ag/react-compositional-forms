@@ -12,40 +12,60 @@ import {useEventCallback} from './use-event-callback';
 import {unionMapValues, unionSets} from './utils';
 
 // -----------------------------------------------------------------------------
-// BooleanObject
+// BooleanMap
+
+function mapSome<K, V>(
+  map: Map<K, V>,
+  callback: (value: V, key: K, map: Map<K, V>) => boolean,
+) {
+  let result = false;
+  map.forEach((value, key) => {
+    if (!result && callback(value, key, map)) {
+      result = true;
+    }
+  });
+  return result;
+}
 
 // Value class tracking which object elements are dirty.
-class BooleanObject<K extends string> {
-  private bits: Record<K, boolean>;
+class BooleanMap<K> {
+  // Optimization: we use a singleton for the empty map to avoid creating new
+  // objects all the time.
+  private static readonly _EMPTY: BooleanMap<any> = new BooleanMap(
+    new Map(),
+    false,
+  );
+
+  // Sparse representation where only `true` values are stored. All other values
+  // are assumed to be `false`.
+  private bits: Map<K, boolean>;
 
   /** Is at least one element in `bits` true? */
   private anyTrue: boolean;
 
-  private constructor(bits: Record<K, boolean>, anyTrue: boolean) {
+  private constructor(bits: Map<K, boolean>, anyTrue: boolean) {
     this.bits = bits;
     this.anyTrue = anyTrue;
   }
 
-  static fromKeys<K extends string>(keys: K[]): BooleanObject<K> {
-    return new BooleanObject(
-      Object.fromEntries(keys.map(k => [k, false])) as Record<K, boolean>,
-      false,
-    );
+  static create<K>(): BooleanMap<K> {
+    return this._EMPTY;
   }
 
-  set(key: K, value: boolean): BooleanObject<K> {
+  set(key: K, value: boolean): BooleanMap<K> {
     // Optimization: no need to create a new object if the value hasn't changed:
-    if (this.bits[key] === value) {
+    const prevValue = this.bits.get(key) ?? false;
+    if (prevValue === value) {
       return this;
     }
-    const bits = {...this.bits, [key]: value} as Record<K, boolean>;
-    const newIsDirty =
-      value || (this.anyTrue && Object.values(bits).some(v => v));
-    return new BooleanObject(bits, newIsDirty);
+    const bits = new Map(this.bits);
+    bits.set(key, value); // `value` must be `true` at this point
+    const newIsDirty = value || (this.anyTrue && mapSome(bits, v => v));
+    return new BooleanMap(bits, newIsDirty);
   }
 
   get(key: K): boolean {
-    return this.bits[key];
+    return this.bits.get(key) ?? false;
   }
 
   /** Is at least one element dirty? */
@@ -55,40 +75,38 @@ class BooleanObject<K extends string> {
 }
 
 // -----------------------------------------------------------------------------
-// ErrorObject
-
-// Optimization: we use a singleton for the empty error set to avoid creating
-// new objects all the time.
-const EMPTY_ERROR_OBJECT_MAP: Map<string, Set<FieldError>> = new Map();
+// ErrorMap
 
 // Value class tracking which object elements are dirty.
-class ErrorObject {
+class ErrorMap<K> {
+  // Optimization: we use a singleton for the empty map to avoid creating new
+  // objects all the time.
+  private static readonly _EMPTY: ErrorMap<any> = new ErrorMap(
+    new Map(),
+    NO_FIELD_ERRORS,
+  );
+
   // Sparse representation where only non-empty sets are stored.
   //
   // The representation is sparse as we expect most keys to not have errors.
-  private errors: Map<string, Set<FieldError>>;
-
-  // All possible keys of the object.
-  private keys: string[];
+  private errors: Map<K, Set<FieldError>>;
 
   /** Is at least one element in `bits` true? */
   private combined: Set<FieldError>;
 
   private constructor(
-    errors: Map<string, Set<FieldError>>,
-    keys: string[],
+    errors: Map<K, Set<FieldError>>,
     combined: Set<FieldError>,
   ) {
     this.errors = errors;
-    this.keys = keys;
     this.combined = combined;
   }
 
-  static fromKeys(keys: string[]): ErrorObject {
-    return new ErrorObject(EMPTY_ERROR_OBJECT_MAP, keys, NO_FIELD_ERRORS);
+  static create<K>(): ErrorMap<K> {
+    return ErrorMap._EMPTY;
   }
 
-  set(key: string, value: Set<FieldError>): ErrorObject {
+  set(key: K, value: Set<FieldError>): ErrorMap<K> {
     // Optimization: no need to create a new object if the value hasn't changed.
     const prevValue = this.errors.get(key);
     if (prevValue === value || (prevValue === undefined && value.size === 0)) {
@@ -103,11 +121,10 @@ class ErrorObject {
     }
 
     const combined = unionMapValues(errors);
-    return new ErrorObject(errors, this.keys, combined);
+    return new ErrorMap(errors, combined);
   }
 
-  get = (key: string): Set<FieldError> =>
-    this.errors.get(key) ?? NO_FIELD_ERRORS;
+  get = (key: K): Set<FieldError> => this.errors.get(key) ?? NO_FIELD_ERRORS;
 
   /** Is at least one element dirty? */
   get allErrors(): Set<FieldError> {
@@ -146,15 +163,17 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   //
   // Any update to these objects must be propagated to the parent via `onChange`
   // as optimizations (e.g. in `onChangeItem`) relies on it.
-  const dirtyBits = React.useRef<BooleanObject<keyof O & string>>(
-    null as unknown as BooleanObject<keyof O & string>,
+  const dirtyBits = React.useRef<BooleanMap<keyof O & string>>(
+    null as unknown as BooleanMap<keyof O & string>,
   );
   if (dirtyBits.current === null) {
-    dirtyBits.current = BooleanObject.fromKeys(Object.keys(initialValue));
+    dirtyBits.current = BooleanMap.create();
   }
-  const fieldErrors = React.useRef<ErrorObject>(null as unknown as ErrorObject);
+  const fieldErrors = React.useRef<ErrorMap<string>>(
+    null as unknown as ErrorMap<string>,
+  );
   if (fieldErrors.current === null) {
-    fieldErrors.current = ErrorObject.fromKeys(Object.keys(initialValue));
+    fieldErrors.current = ErrorMap.create();
   }
 
   // Refs to the child fields.
@@ -225,8 +244,8 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
       const nextInitialValue = newValue ?? initialValue;
       const keepValue = keepDirtyValues && dirtyBits.current.isAnyTrue;
       if (!keepValue) {
-        dirtyBits.current = BooleanObject.fromKeys(Object.keys(initialValue));
-        fieldErrors.current = ErrorObject.fromKeys(Object.keys(initialValue));
+        dirtyBits.current = BooleanMap.create();
+        fieldErrors.current = ErrorMap.create();
 
         // Since we changed e.g. `dirtyBits` we need to notify the parent as
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
