@@ -15,37 +15,25 @@ import {unionMapValues, unionSets} from './utils';
 // -----------------------------------------------------------------------------
 // BooleanMap
 
-function mapSome<K, V>(
-  map: Map<K, V>,
-  callback: (value: V, key: K, map: Map<K, V>) => boolean,
-): boolean {
-  for (const [key, value] of map) {
-    if (callback(value, key, map)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Value class tracking which object elements are dirty.
 class BooleanMap<K> {
   // Optimization: we use a singleton for the empty map to avoid creating new
   // objects all the time.
   private static readonly _EMPTY: BooleanMap<any> = new BooleanMap(
     new Map(),
-    false,
+    0,
   );
 
   // Sparse representation where only `true` values are stored. All other values
   // are assumed to be `false`.
   private bits: Map<K, boolean>;
 
-  /** Is at least one element in `bits` true? */
-  private anyTrue: boolean;
+  /** Number of elements that are `true`. */
+  private numTrue: number;
 
-  private constructor(bits: Map<K, boolean>, anyTrue: boolean) {
+  private constructor(bits: Map<K, boolean>, numTrue: number) {
     this.bits = bits;
-    this.anyTrue = anyTrue;
+    this.numTrue = numTrue;
   }
 
   static create<K>(): BooleanMap<K> {
@@ -60,8 +48,10 @@ class BooleanMap<K> {
     }
     const bits = new Map(this.bits);
     bits.set(key, value); // `value` must be `true` at this point
-    const newIsDirty = value || (this.anyTrue && mapSome(bits, v => v));
-    return new BooleanMap(bits, newIsDirty);
+    // Optimization: the case were the old and new values are the same is
+    // handled above.
+    const numTrue = this.numTrue + (value && !prevValue ? +1 : -1);
+    return new BooleanMap(bits, numTrue);
   }
 
   get(key: K): boolean {
@@ -70,7 +60,7 @@ class BooleanMap<K> {
 
   /** Is at least one element dirty? */
   get isAnyTrue(): boolean {
-    return this.anyTrue;
+    return this.numTrue > 0;
   }
 }
 
