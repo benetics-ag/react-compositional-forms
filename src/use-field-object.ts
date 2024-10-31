@@ -173,21 +173,21 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
     key: keyof O & string,
   ) => void;
   const onChangeItem: OnChangeItem = useEventCallback(
-    (newValue, {isDirty, errors: newErrors}, key) => {
+    (newItemValue, {isDirty, errors: newErrors}, key) => {
       // Optimization: don't do anything if nothing changed.
       const errors = fieldErrors.current.get(key);
       if (
-        newValue === value[key] &&
+        newItemValue === value[key] &&
         isDirty === dirtyBits.current.get(key) &&
         (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
-      const newElems = {...value, [key]: newValue};
+      const newValue = {...value, [key]: newItemValue};
       dirtyBits.current = dirtyBits.current.set(key, isDirty);
       fieldErrors.current = fieldErrors.current.set(key, newErrors);
       onChange(
-        newElems,
+        newValue,
         {
           isDirty: dirtyBits.current.isAnyTrue,
           errors: fieldErrors.current.allErrors,
