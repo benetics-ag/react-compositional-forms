@@ -18,14 +18,13 @@ import {unionMapValues, unionSets} from './utils';
 function mapSome<K, V>(
   map: Map<K, V>,
   callback: (value: V, key: K, map: Map<K, V>) => boolean,
-) {
-  let result = false;
-  map.forEach((value, key) => {
-    if (!result && callback(value, key, map)) {
-      result = true;
+): boolean {
+  for (const [key, value] of map) {
+    if (callback(value, key, map)) {
+      return true;
     }
-  });
-  return result;
+  }
+  return false;
 }
 
 // Value class tracking which object elements are dirty.
