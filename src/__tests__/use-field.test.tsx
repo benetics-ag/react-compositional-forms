@@ -84,6 +84,7 @@ const FieldTest = ({
       ) : submitStatus === 'failure' ? (
         <p>Submit failure</p>
       ) : null}
+      {formState.isSubmitSuccessful ? <p>Form submit successful</p> : null}
     </div>
   );
 };
@@ -349,6 +350,17 @@ describe('Field', () => {
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();
       expect(screen.getByText('Submit success')).toBeTruthy();
+    });
+  });
+
+  // TODO(tibbe): Move this to its own useForm test.
+  describe('handleSubmit', () => {
+    it('marks submit as unsuccessful on validation error', async () => {
+      render(<FieldTest />);
+
+      await user.click(screen.getByRole('button', {name: 'submit'}));
+
+      expect(screen.queryByText('Form submit successful')).toBeNull();
     });
   });
 });
