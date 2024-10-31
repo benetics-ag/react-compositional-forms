@@ -11,6 +11,7 @@
     "test": "jest",
     "tsc:no-emit": "tsc --noEmit --noErrorTruncation --pretty"
   },
+  "main": "./dist/index.cjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
