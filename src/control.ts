@@ -102,4 +102,7 @@ export type Control<T> = {
 
   /** See {@link UseFormProps.mode} */
   validationMode: 'onBlur' | 'onChange';
+
+  /** The current value of the child field in the form. */
+  value: T;
 };

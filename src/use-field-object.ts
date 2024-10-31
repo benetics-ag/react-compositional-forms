@@ -136,19 +136,9 @@ export type UseFieldObjectReturn<O extends object> = {
 export const useFieldObject = <O extends {[prop: string]: unknown}>({
   control,
 }: UseFieldObjectProps<O>): UseFieldObjectReturn<O> => {
-  const {
-    context,
-    onChange,
-    ref,
-    initialValue: controlInitialValue,
-    validationMode,
-  } = control;
-
-  // On `reset` we might change the initial value and thus we need a local copy.
-  const initialValue = React.useRef(controlInitialValue);
+  const {context, onChange, ref, initialValue, validationMode, value} = control;
 
   // Cached values of child fields:
-  // - `value` is the current value of the object.
   // - `dirtyBits` is a boolean object that tracks which elements are dirty and
   //   whether any element is dirty.
   // - `fieldErrors` is an object of sets of errors for each element in the
@@ -156,20 +146,15 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   //
   // Any update to these objects must be propagated to the parent via `onChange`
   // as optimizations (e.g. in `onChangeItem`) relies on it.
-  const value = React.useRef(controlInitialValue);
   const dirtyBits = React.useRef<BooleanObject<keyof O & string>>(
     null as unknown as BooleanObject<keyof O & string>,
   );
   if (dirtyBits.current === null) {
-    dirtyBits.current = BooleanObject.fromKeys(
-      Object.keys(controlInitialValue),
-    );
+    dirtyBits.current = BooleanObject.fromKeys(Object.keys(initialValue));
   }
   const fieldErrors = React.useRef<ErrorObject>(null as unknown as ErrorObject);
   if (fieldErrors.current === null) {
-    fieldErrors.current = ErrorObject.fromKeys(
-      Object.keys(controlInitialValue),
-    );
+    fieldErrors.current = ErrorObject.fromKeys(Object.keys(initialValue));
   }
 
   // Refs to the child fields.
@@ -178,7 +163,7 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   );
   if (childRefs.current === null) {
     childRefs.current = Object.fromEntries(
-      Object.keys(value).map(key => [key as keyof O, null]),
+      Object.keys(initialValue).map(key => [key as keyof O, null]),
     ) as Record<keyof O, FieldRef<O[keyof O]> | null>;
   }
 
@@ -192,14 +177,13 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
       // Optimization: don't do anything if nothing changed.
       const errors = fieldErrors.current.get(key);
       if (
-        newValue === value.current[key] &&
+        newValue === value[key] &&
         isDirty === dirtyBits.current.get(key) &&
         (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
-      const newElems = {...value.current, [key]: newValue};
-      value.current = newElems;
+      const newElems = {...value, [key]: newValue};
       dirtyBits.current = dirtyBits.current.set(key, isDirty);
       fieldErrors.current = fieldErrors.current.set(key, newErrors);
       onChange(
@@ -213,10 +197,10 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
     },
   );
 
-  const [fields, setFields] = React.useState<UseFieldObjectReturn<O>['fields']>(
+  const fields = React.useMemo<UseFieldObjectReturn<O>['fields']>(
     () =>
       Object.fromEntries(
-        Object.keys(initialValue.current).map((key: keyof O) => [
+        Object.keys(initialValue).map((key: keyof O) => [
           key,
           {
             control: {
@@ -225,59 +209,31 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
               ref: (childRef: FieldRef<O[keyof O]>) => {
                 childRefs.current[key] = childRef;
               },
-              initialValue: initialValue.current[key],
+              initialValue: initialValue[key],
               validationMode,
+              value: value[key],
             },
           },
         ]),
       ) as unknown as UseFieldObjectReturn<O>['fields'],
+    [initialValue, onChangeItem, validationMode, value],
   );
 
   const reset = React.useCallback(
-    (newInitialValue?: O, options?: ResetOptions) => {
+    (newValue?: O, options?: ResetOptions) => {
       const {keepDirtyValues = false} = options || {};
-      if (newInitialValue !== undefined) {
-        initialValue.current = newInitialValue;
-      }
-      // TODO(tibbe): consider if we want do define `keepDirtyValues` in some
-      // other way e.g. try to reset the elements.
+      const nextInitialValue = newValue ?? initialValue;
       const keepValue = keepDirtyValues && dirtyBits.current.isAnyTrue;
-      // TODO(tibbe): Do we need to do anything except reset the children?
       if (!keepValue) {
-        dirtyBits.current = BooleanObject.fromKeys(
-          Object.keys(initialValue.current),
-        );
-        fieldErrors.current = ErrorObject.fromKeys(
-          Object.keys(initialValue.current),
-        );
-
-        value.current = initialValue.current;
-
-        setFields(
-          Object.fromEntries(
-            Object.keys(initialValue.current).map((key: keyof O) => [
-              key,
-              {
-                control: {
-                  context: key,
-                  onChange: onChangeItem,
-                  ref: (childRef: FieldRef<O[keyof O]>) => {
-                    childRefs.current[key] = childRef;
-                  },
-                  initialValue: initialValue.current[key],
-                  validationMode,
-                },
-              },
-            ]),
-          ) as unknown as UseFieldObjectReturn<O>['fields'],
-        );
+        dirtyBits.current = BooleanObject.fromKeys(Object.keys(initialValue));
+        fieldErrors.current = ErrorObject.fromKeys(Object.keys(initialValue));
 
         // Since we changed e.g. `dirtyBits` we need to notify the parent as
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
         // current state corresponds to what has been communicated to the parent
         // aren't valid.
         onChange(
-          value.current,
+          nextInitialValue,
           {
             isDirty: false,
             errors: fieldErrors.current.allErrors,
@@ -286,34 +242,32 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         );
 
         Object.entries(childRefs.current).forEach(([key, childRef]) =>
-          childRef?.reset(initialValue.current[key as keyof O]),
+          childRef?.reset(nextInitialValue[key as keyof O]),
         );
       }
     },
-    [context, onChange, onChangeItem, validationMode],
+    [context, initialValue, onChange],
   );
 
   const setValue: FieldRefSetValue<{[P in keyof O]: O[P]}> = React.useCallback(
     (newValue: O, options) => {
       // Optimization: don't do anything if nothing changed.
-      if (newValue === value.current) {
+      if (newValue === value) {
         return;
       }
 
-      const prevValue = value.current;
-      value.current = newValue;
       Object.entries(childRefs.current).forEach(([key, childRef]) => {
         // Optimization: don't do anything if nothing changed.
         const typedKey = key as keyof O;
         const newPropValue = newValue[typedKey];
-        if (newPropValue === prevValue[typedKey]) {
+        if (newPropValue === value[typedKey]) {
           return;
         }
 
         childRef?.setValue(newPropValue, options);
       });
     },
-    [],
+    [value],
   );
 
   const validateMethod = React.useCallback(

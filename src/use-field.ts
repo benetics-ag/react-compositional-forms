@@ -1,11 +1,6 @@
 import React from 'react';
 
-import {
-  Control,
-  FieldRefSetValue,
-  ResetOptions,
-  SetValueOptions,
-} from './control';
+import {Control, FieldRefSetValue, SetValueOptions} from './control';
 import {FieldError, NO_FIELD_ERRORS} from './field-errors';
 import {useEventCallback} from './use-event-callback';
 
@@ -131,19 +126,7 @@ export const useField = <T>({
   control,
   validate,
 }: UseFieldProps<T>): UseFieldReturn<T> => {
-  const {
-    context,
-    onChange,
-    ref,
-    initialValue: controlInitialValue,
-    validationMode,
-  } = control;
-
-  // On `reset` we might change the initial value and thus we need a local copy.
-  const [initialValue, setInitialValue] = React.useState(controlInitialValue);
-
-  // The current value of the field.
-  const [value, setValue] = React.useState(initialValue);
+  const {context, onChange, ref, initialValue, value, validationMode} = control;
 
   // Dirty state:
   const isDirty = React.useMemo(
@@ -199,27 +182,12 @@ export const useField = <T>({
     if (validationMode === 'onChange') {
       validateAndSetErrors(newValue);
     }
-    setValue(newValue);
+    onChange(newValue, {isDirty, errors}, context);
   });
 
-  const reset = React.useCallback(
-    (newInitialValue?: T, options?: ResetOptions) => {
-      // TODO(tibbe): Is there a possible optimization if `newInitialValue` is
-      // the same as `value` and/or `initialValue`?
-      const {keepDirtyValues = false} = options || {};
-      let nextInitialValue = initialValue;
-      if (newInitialValue !== undefined) {
-        nextInitialValue = newInitialValue;
-        setInitialValue(nextInitialValue);
-      }
-      const keepValue = keepDirtyValues && isDirty;
-      if (!keepValue) {
-        setErrors(NO_FIELD_ERRORS);
-        setValue(nextInitialValue);
-      }
-    },
-    [initialValue, isDirty],
-  );
+  const reset = React.useCallback(() => {
+    setErrors(NO_FIELD_ERRORS);
+  }, []);
 
   const validateMethod = React.useCallback(
     () => validateAndSetErrors(value),
@@ -234,14 +202,14 @@ export const useField = <T>({
           // TODO(tibbe): Implement `onBlur`-triggered validation.
           break;
         case 'onChange':
-          wrappedOnChange(newValue);
+          // TODO(tibbe): Should also check if validateMode is onChange.
+          validateAndSetErrors(newValue);
           break;
         case 'set':
-          setValue(newValue);
           break;
       }
     },
-    [wrappedOnChange],
+    [validateAndSetErrors],
   );
 
   React.useImperativeHandle(
