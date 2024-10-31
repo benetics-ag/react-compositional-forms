@@ -17,6 +17,7 @@ const FieldTest = ({
   validate = value =>
     value.length > 0 ? NO_FIELD_ERRORS : new Set([{message: 'Required'}]),
   mode = 'onChange',
+  setValueMode = 'onChange',
 }: TestProps<string>) => {
   const {
     control,
@@ -65,8 +66,14 @@ const FieldTest = ({
         title="reset non-dirty"
       />
       <button onClick={() => reset('1')} title="reset with new default" />
-      <button onClick={() => setValue('1')} title="set value" />
-      <button onClick={() => setValue('')} title="clear value" />
+      <button
+        onClick={() => setValue('1', {mode: setValueMode})}
+        title="set value"
+      />
+      <button
+        onClick={() => setValue('', {mode: setValueMode})}
+        title="clear value"
+      />
       <button onClick={handleSubmit(onSuccess, onInvalid)} title="submit" />
       <p>Form: {JSON.stringify(formValue)}</p>
       {formIsDirty ? <p>Form dirty</p> : null}
@@ -214,7 +221,7 @@ describe('Field', () => {
     });
   });
 
-  describe('setState', () => {
+  describe('setValue', () => {
     it('updates dirty state', async () => {
       render(<FieldTest />);
 
@@ -258,19 +265,33 @@ describe('Field', () => {
   });
 
   describe('reset', () => {
-    it('updates value', async () => {
+    it('resets to initial value', async () => {
       render(<FieldTest />);
 
       await user.type(screen.getByTestId('input'), '1');
       await user.click(screen.getByRole('button', {name: 'reset'}));
 
       expect(screen.getByTestId('input')).toHaveValue('');
+      expect(screen.getByText('Form: ""')).toBeTruthy();
+    });
 
-      // A reset form should be clean:
+    it('resets to clean state', async () => {
+      render(<FieldTest />);
+
+      await user.type(screen.getByTestId('input'), '1');
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Dirty')).toBeNull();
       expect(screen.queryByText('Form dirty')).toBeNull();
+    });
 
-      // A reset form should be valid:
+    it('resets to valid state', async () => {
+      render(<FieldTest initialValue="1" />);
+
+      // Make the field invalid:
+      await user.clear(screen.getByTestId('input'));
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Errors:')).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();
@@ -307,20 +328,6 @@ describe('Field', () => {
       // Should preserve dirty value and thus dirty state:
       expect(screen.getByText('Dirty')).toBeTruthy();
       expect(screen.getByText('Form dirty')).toBeTruthy();
-    });
-
-    it('validates', async () => {
-      render(<FieldTest initialValue="1" resetNewInitialValue="" />);
-
-      // Make the field invalid:
-      await user.clear(screen.getByTestId('input'));
-
-      await user.click(screen.getByRole('button', {name: 'reset'}));
-
-      // A reset form should be valid:
-      expect(screen.queryByText('Errors:')).toBeNull();
-      expect(screen.getByText('Form valid')).toBeTruthy();
-      expect(screen.queryByText('Form errors: Required')).toBeNull();
     });
   });
 

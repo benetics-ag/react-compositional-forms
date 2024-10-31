@@ -190,7 +190,7 @@ describe('FieldObject', () => {
     });
   });
 
-  describe('setState', () => {
+  describe('setValue', () => {
     it('updates value', async () => {
       render(<ObjectTest />);
 
@@ -240,17 +240,32 @@ describe('FieldObject', () => {
   });
 
   describe('reset', () => {
-    it('resets', async () => {
+    it('resets to initial value', async () => {
       render(<ObjectTest />);
 
       await user.type(screen.getByTestId('input-a'), '1');
       await user.click(screen.getByRole('button', {name: 'reset'}));
 
       expect(screen.getByTestId('input-a')).toHaveValue('');
+      expect(screen.getByText('Form: {"a":"","b":""}')).toBeTruthy();
+    });
+
+    it('resets to clean state', async () => {
+      render(<ObjectTest />);
+
+      await user.type(screen.getByTestId('input-a'), '1');
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Field a dirty')).toBeNull();
       expect(screen.queryByText('Form dirty')).toBeNull();
+    });
 
-      // A reset form should be valid:
+    it('resets to valid state', async () => {
+      render(<ObjectTest initialValue={{a: '1', b: ''}} />);
+
+      await user.clear(screen.getByTestId('input-a'));
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Field a errors: Required')).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();

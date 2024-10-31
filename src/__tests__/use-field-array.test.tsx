@@ -278,7 +278,7 @@ describe('FieldArray', () => {
     });
   });
 
-  describe('setState', () => {
+  describe('setValue', () => {
     it('updates value on same length value', async () => {
       render(<ArrayTest setValueValue={['1']} />);
 
@@ -373,17 +373,17 @@ describe('FieldArray', () => {
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
 
-      expect(screen.getByTestId('input-0')).toHaveValue('1');
-      expect(screen.getByText('Form: ["1"]')).toBeTruthy();
+      expect(screen.getByText('Field 0 dirty')).toBeTruthy();
+      expect(screen.getByText('Form dirty')).toBeTruthy();
     });
 
     it('updates row valid state', async () => {
-      render(<ArrayTest initialValue={['']} setValueValue={['1']} />);
+      render(<ArrayTest initialValue={['1']} setValueValue={['']} />);
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
 
-      expect(screen.getByTestId('input-0')).toHaveValue('1');
-      expect(screen.getByText('Form: ["1"]')).toBeTruthy();
+      expect(screen.getByText('Field 0 errors: Required')).toBeTruthy();
+      expect(screen.queryByText('Form valid')).toBeNull();
     });
 
     it('removes row', async () => {
@@ -394,6 +394,20 @@ describe('FieldArray', () => {
       );
 
       expect(screen.getByText('Form: []')).toBeTruthy();
+    });
+
+    it('removes the correct row', async () => {
+      render(<ArrayTest initialValue={[]} />);
+
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+      await user.type(screen.getByTestId('input-0'), '1');
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+      await user.type(screen.getByTestId('input-1'), '2');
+      await user.click(screen.getByRole('button', {name: 'remove row 0'}));
+
+      expect(screen.queryByTestId('input-1')).toBeNull();
+      expect(screen.getByTestId('input-0')).toHaveValue('2');
+      expect(screen.getByText('Form: ["2"]')).toBeTruthy();
     });
 
     it('marks dirty if longer than initial', async () => {
@@ -424,17 +438,33 @@ describe('FieldArray', () => {
   });
 
   describe('reset', () => {
-    it('resets', async () => {
+    it('resets to initial value', async () => {
       render(<ArrayTest />);
 
       await user.type(screen.getByTestId('input-0'), '1');
       await user.click(screen.getByRole('button', {name: 'reset'}));
 
       expect(screen.getByTestId('input-0')).toHaveValue('');
+      expect(screen.getByText('Form: [""]')).toBeTruthy();
+    });
+
+    it('resets to clean state', async () => {
+      render(<ArrayTest />);
+
+      await user.type(screen.getByTestId('input-0'), '1');
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Field 0 dirty')).toBeNull();
       expect(screen.queryByText('Form dirty')).toBeNull();
+    });
 
-      // A reset form should be valid:
+    it('resets to valid state', async () => {
+      render(<ArrayTest initialValue={['1']} resetNewInitialValue={['']} />);
+
+      // Make the field invalid:
+      await user.clear(screen.getByTestId('input-0'));
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
       expect(screen.queryByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();

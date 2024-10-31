@@ -8,6 +8,7 @@ import {
   SetValueOptions,
 } from './control';
 import {FieldError, NO_FIELD_ERRORS} from './field-errors';
+import {useEventCallback} from './use-event-callback';
 
 // -----------------------------------------------------------------------------
 // useForm
@@ -121,15 +122,17 @@ export type UseFormReturn<T> = {
 };
 
 export const useForm = <T>({
-  initialValue,
+  initialValue: initialInitialValue,
   mode = 'onChange',
 }: UseFormProps<T>): UseFormReturn<T> => {
-  const [value, setValue] = React.useState(initialValue);
+  const [value, setValue] = React.useState(initialInitialValue);
   const [isDirty, setIsDirty] = React.useState(false);
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isSubmitted, setIsSubmitted] = React.useState(false);
   const isValid = React.useMemo(() => errors.size === 0, [errors]);
+  // On `reset` we might change the initial value and thus we need a local copy.
+  const [initialValue, setInitialValue] = React.useState(initialInitialValue);
 
   type OnChange = (newValue: T, newFieldState: InternalFieldState) => void;
   const onChange: OnChange = React.useCallback(
@@ -143,8 +146,15 @@ export const useForm = <T>({
 
   const ref = React.useRef<FieldRef<T> | null>(null);
   const control = React.useMemo(
-    () => ({context: null, onChange, ref, initialValue, validationMode: mode}),
-    [onChange, initialValue, mode],
+    () => ({
+      context: null,
+      onChange,
+      ref,
+      initialValue,
+      value,
+      validationMode: mode,
+    }),
+    [onChange, initialValue, value, mode],
   );
 
   const setValueMethod: UseFormSetValue<T> = React.useCallback(
@@ -186,10 +196,18 @@ export const useForm = <T>({
     [value],
   );
 
-  const reset = React.useCallback((newValue?: T, options?: ResetOptions) => {
+  const reset = useEventCallback((newValue?: T, options?: ResetOptions) => {
     setIsSubmitted(false);
+    const {keepDirtyValues = false} = options || {};
+    if (newValue !== undefined) {
+      setInitialValue(newValue);
+    }
+    const keepValue = keepDirtyValues && isDirty;
+    if (!keepValue) {
+      setValue(newValue ?? initialValue);
+    }
     ref.current?.reset(newValue, options);
-  }, []);
+  });
 
   const formState = React.useMemo(
     () => ({errors, isDirty, isSubmitted, isSubmitting, isValid}),
