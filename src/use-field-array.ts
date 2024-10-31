@@ -306,25 +306,25 @@ export const useFieldArray = <T>({
     index: number,
   ) => void;
   const onChangeItem: OnChangeItem = useEventCallback(
-    (newValue, {isDirty, errors: newErrors}, index) => {
+    (newItemValue, {isDirty, errors: newErrors}, index) => {
       // Optimization: don't do anything if nothing changed.
       const errors = fieldErrors.current.get(index);
       if (
-        newValue === value[index] &&
+        newItemValue === value[index] &&
         isDirty === dirtyBits.current.get(index) &&
         (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
 
-      const newElems = value.map((v, i) => (i === index ? newValue : v));
+      const newValue = value.map((v, i) => (i === index ? newItemValue : v));
       dirtyBits.current = dirtyBits.current.set(index, isDirty);
       fieldErrors.current = fieldErrors.current.set(index, newErrors);
       onChange(
-        newElems,
+        newValue,
         {
           isDirty:
-            newElems.length !== initialValue.length ||
+            newValue.length !== initialValue.length ||
             dirtyBits.current.isAnyTrue,
           errors: fieldErrors.current.allErrors,
         },
