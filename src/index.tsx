@@ -68,6 +68,7 @@ export {
   type UseFormReturn,
   type UseFormSetValue,
 } from './use-form';
+export * as validation from './validation';
 
 // -----------------------------------------------------------------------------
 // propsWithControlAreEqual
