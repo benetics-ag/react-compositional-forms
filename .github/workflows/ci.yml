@@ -1,9 +1,9 @@
 name: ci
 on:
-    pull_request:
-      branches:
-        - main
-    
+  pull_request:
+    branches:
+      - main
+
 jobs:
   lint-type-check-and-test:
     runs-on: ubuntu-22.04
@@ -14,7 +14,6 @@ jobs:
         with:
           node-version: '18'
           cache: 'yarn'
-          cache-dependency-path: yarn.lock
       - name: Install yarn dependencies
         run: yarn install --frozen-lockfile
       - name: Type check
