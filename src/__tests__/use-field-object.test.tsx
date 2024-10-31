@@ -3,9 +3,10 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {Field, FieldObject, NO_FIELD_ERRORS, useForm} from '..';
+import {NO_FIELD_ERRORS, useFieldObject, useForm} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
+import TextField from '../test-helpers/TextField';
 
 jest.useFakeTimers();
 const user = userEvent.setup({advanceTimers: jest.advanceTimersByTime});
@@ -31,59 +32,22 @@ const ObjectTest = ({
   const onSuccess = React.useCallback(() => setSubmitStatus('success'), []);
   const onInvalid = React.useCallback(() => setSubmitStatus('failure'), []);
 
+  const {fields} = useFieldObject({control: controlForm});
+
   return (
     <div>
-      <FieldObject
-        control={controlForm}
-        render={({fields}) => (
-          <div>
-            <Field
-              control={fields.a.control}
-              render={({
-                fieldState: {errors, isDirty},
-                field: {onBlur, onChange, value},
-              }) => (
-                <div>
-                  <input
-                    onBlur={onBlur}
-                    onChange={e => onChange(e.target.value)}
-                    value={value}
-                    data-testid="input-a"
-                  />
-                  {isDirty ? <p>Field a dirty</p> : null}
-                  {errors.size > 0 ? (
-                    <p>Field a errors: {stringifyErrors(errors)}</p>
-                  ) : null}
-                </div>
-              )}
-              validate={value =>
-                value.length > 0
-                  ? NO_FIELD_ERRORS
-                  : new Set([{message: 'Required'}])
-              }
-            />
-            <Field
-              control={fields.b.control}
-              render={({
-                fieldState: {errors, isDirty},
-                field: {onChange, value},
-              }) => (
-                <div>
-                  <input
-                    onChange={e => onChange(e.target.value)}
-                    value={value}
-                    data-testid="input-b"
-                  />
-                  {isDirty ? <p>Field b dirty</p> : null}
-                  {errors.size > 0 ? (
-                    <p>Field b errors: {stringifyErrors(errors)}</p>
-                  ) : null}
-                </div>
-              )}
-            />
-          </div>
-        )}
-      />
+      <div>
+        <TextField
+          name="a"
+          parentControl={fields.a.control}
+          validate={value =>
+            value.length > 0
+              ? NO_FIELD_ERRORS
+              : new Set([{message: 'Required'}])
+          }
+        />
+        <TextField name="b" parentControl={fields.b.control} />
+      </div>
       <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
         onClick={() => reset(undefined, {keepDirtyValues: true})}
