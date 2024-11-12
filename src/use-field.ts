@@ -140,10 +140,10 @@ export const useField = <T>({
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
 
   // Notify parent of changes:
-  React.useEffect(
-    () => onChange(value, {isDirty, errors}),
-    [value, isDirty, errors, onChange],
-  );
+  React.useEffect(() => {
+    console.debug('useField: changed', {value, isDirty, errors, initialValue});
+    onChange(value, {isDirty, errors});
+  }, [value, isDirty, errors, onChange]);
 
   // Optimization: we keep track of the previous errors and only return a
   // different object if re-validating returns a different set of errors.
