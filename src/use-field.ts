@@ -92,6 +92,17 @@ export type UseFieldReturn<T> = {
 };
 
 export type UseFieldProps<T> = {
+  /**
+   * Function used to compare the initial value to the current value.
+   *
+   * Use to decide whether the field is dirty. Defaults to {@link Object.is}.
+   *
+   * @param val1 The first value.
+   * @param val2 The second value.
+   * @returns `true` if the values are equal, otherwise `false`.
+   */
+  equalsFn?: (val1: T, val2: T) => boolean;
+
   /** Parent form control object. */
   control: Control<T>;
 
@@ -123,6 +134,7 @@ export type UseFieldProps<T> = {
  * initial value.
  */
 export const useField = <T>({
+  equalsFn = Object.is,
   control,
   validate,
 }: UseFieldProps<T>): UseFieldReturn<T> => {
@@ -130,8 +142,8 @@ export const useField = <T>({
 
   // Dirty state:
   const isDirty = React.useMemo(
-    () => value !== initialValue,
-    [value, initialValue],
+    () => !equalsFn(value, initialValue),
+    [equalsFn, value, initialValue],
   );
 
   // Validation state:
