@@ -15,6 +15,7 @@ const ArrayTest = ({
   initialValue = [''],
   resetNewInitialValue = undefined,
   setValueValue = ['1'],
+  validate,
 }: TestProps<string[]>) => {
   const {
     control: controlForm,
@@ -31,7 +32,10 @@ const ArrayTest = ({
   const onSuccess = React.useCallback(() => setSubmitStatus('success'), []);
   const onInvalid = React.useCallback(() => setSubmitStatus('failure'), []);
 
-  const {append, fields, remove} = useFieldArray({control: controlForm});
+  const {append, fields, remove} = useFieldArray({
+    control: controlForm,
+    validate,
+  });
 
   return (
     <div>
@@ -98,7 +102,15 @@ describe('FieldArray', () => {
     });
 
     it('has valid state', () => {
-      render(<ArrayTest />);
+      render(
+        <ArrayTest
+          validate={value =>
+            value.length === 0
+              ? new Set([{message: 'Too few elements'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
@@ -139,6 +151,33 @@ describe('FieldArray', () => {
     });
 
     it('validates', async () => {
+      render(
+        <ArrayTest
+          initialValue={['1']}
+          validate={value =>
+            value[0] !== '11'
+              ? new Set([{message: 'Field 0 must be "11"'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
+
+      await user.type(screen.getByTestId('input-0'), '1');
+
+      // Goes from invalid to valid:
+      expect(screen.queryByText('Form valid')).toBeTruthy();
+      expect(screen.queryByText('Form errors: Required')).toBeNull();
+
+      await user.type(screen.getByTestId('input-0'), '1');
+
+      // Goes from valid to invalid:
+      expect(screen.queryByText('Form valid')).toBeNull();
+      expect(
+        screen.getByText('Form errors: Field 0 must be "11"'),
+      ).toBeTruthy();
+    });
+
+    it('validates elements', async () => {
       render(<ArrayTest />);
 
       await user.type(screen.getByTestId('input-0'), '1');
@@ -207,6 +246,31 @@ describe('FieldArray', () => {
       await user.click(screen.getByRole('button', {name: 'add row'}));
 
       expect(screen.queryByText('Form dirty')).toBeNull();
+    });
+
+    it('validates', async () => {
+      render(
+        <ArrayTest
+          initialValue={[]}
+          validate={value =>
+            value.length > 1
+              ? new Set([{message: 'Too many elements'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+
+      // Goes from invalid to valid:
+      expect(screen.getByText('Form valid')).toBeTruthy();
+      expect(screen.queryByText('Form errors: Too many elements')).toBeNull();
+
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+
+      // Goes from valid to invalid:
+      expect(screen.queryByText('Form valid')).toBeNull();
+      expect(screen.getByText('Form errors: Too many elements')).toBeTruthy();
     });
   });
 
@@ -287,7 +351,7 @@ describe('FieldArray', () => {
       expect(screen.getByText('Form: []')).toBeTruthy();
     });
 
-    it('validates on same length value', async () => {
+    it('validates elements on same length value', async () => {
       render(<ArrayTest setValueValue={['1']} />);
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
@@ -296,7 +360,7 @@ describe('FieldArray', () => {
       expect(screen.getByText('Form valid')).toBeTruthy();
     });
 
-    it('validates on longer value', async () => {
+    it('validates elements on longer value', async () => {
       render(<ArrayTest setValueValue={['1', '2']} />);
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
@@ -306,12 +370,33 @@ describe('FieldArray', () => {
       expect(screen.getByText('Form valid')).toBeTruthy();
     });
 
-    it('validates on shorter value', async () => {
+    it('validates elements on shorter value', async () => {
       render(<ArrayTest setValueValue={[]} />);
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
 
       expect(screen.getByText('Form valid')).toBeTruthy();
+    });
+
+    // TODO(tibbe): Continue here by implementing below test and also for
+    // `reset` et. al.
+    it('validates on same length', async () => {
+      render(
+        <ArrayTest
+          initialValue={['1']}
+          setValueValue={[]}
+          validate={value =>
+            value.length !== 1
+              ? new Set([{message: 'Not one element'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'set value'}));
+
+      expect(screen.queryByText('Form valid')).toBeNull();
+      expect(screen.getByText('Form errors: Not one element')).toBeTruthy();
     });
 
     it('adds row with initial value', async () => {
@@ -440,7 +525,17 @@ describe('FieldArray', () => {
     });
 
     it('resets to valid state', async () => {
-      render(<ArrayTest initialValue={['1']} resetNewInitialValue={['']} />);
+      render(
+        <ArrayTest
+          initialValue={['1']}
+          resetNewInitialValue={['']}
+          validate={value =>
+            value.length !== 1
+              ? new Set([{message: 'Not one element'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
 
       // Make the field invalid:
       await user.clear(screen.getByTestId('input-0'));
@@ -448,7 +543,9 @@ describe('FieldArray', () => {
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
       expect(screen.queryByText('Form valid')).toBeTruthy();
-      expect(screen.queryByText('Form errors: Required')).toBeNull();
+      expect(
+        screen.queryByText('Form errors: Not one element, Required'),
+      ).toBeNull();
     });
 
     it('resets with new same length initial value', async () => {
@@ -536,11 +633,22 @@ describe('FieldArray', () => {
 
   describe('validate', () => {
     it('triggers validation', async () => {
-      render(<ArrayTest />);
+      render(
+        <ArrayTest
+          validate={value =>
+            value[0] !== '1'
+              ? new Set([{message: 'Field 0 must be "1"'}])
+              : NO_FIELD_ERRORS
+          }
+        />,
+      );
 
       await user.click(screen.getByRole('button', {name: 'submit'}));
 
       expect(screen.getByText('Field 0 errors: Required')).toBeTruthy();
+      expect(
+        screen.getByText('Form errors: Field 0 must be "1", Required'),
+      ).toBeTruthy();
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Submit failure')).toBeTruthy();
 
@@ -548,6 +656,9 @@ describe('FieldArray', () => {
       await user.click(screen.getByRole('button', {name: 'submit'}));
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
+      expect(
+        screen.queryByText('Form errors: Field 0 must be "1", Required'),
+      ).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.getByText('Submit success')).toBeTruthy();
     });
