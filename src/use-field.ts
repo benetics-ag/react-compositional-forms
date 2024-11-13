@@ -1,40 +1,12 @@
 import React from 'react';
 
 import {Control, FieldRefSetValue, SetValueOptions} from './control';
-import {FieldError, NO_FIELD_ERRORS} from './field-errors';
+import {
+  FieldError,
+  fieldErrorSetsDeepEqual,
+  NO_FIELD_ERRORS,
+} from './field-errors';
 import {useEventCallback} from './use-event-callback';
-
-// -----------------------------------------------------------------------------
-// fieldErrorSetsDeepEqual
-
-function fieldErrorDeepEqual(errorA: FieldError, errorB: FieldError): boolean {
-  if (errorA === errorB) {
-    return true;
-  }
-  return errorA.message === errorB.message;
-}
-
-function fieldErrorSetsDeepEqual(
-  setA: Set<FieldError>,
-  setB: Set<FieldError>,
-): boolean {
-  if (setA === setB) {
-    return true;
-  }
-
-  if (setA.size !== setB.size) {
-    return false;
-  }
-
-  // O(n^2) but n is small.
-  for (const a of setA) {
-    if (!Array.from(setB).some(b => fieldErrorDeepEqual(a, b))) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 // -----------------------------------------------------------------------------
 // useField

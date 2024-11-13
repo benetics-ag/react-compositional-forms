@@ -7,7 +7,11 @@ import {
   InternalFieldState,
   ResetOptions,
 } from './control';
-import {FieldError, NO_FIELD_ERRORS} from './field-errors';
+import {
+  FieldError,
+  fieldErrorSetsDeepEqual,
+  NO_FIELD_ERRORS,
+} from './field-errors';
 import {useEventCallback} from './use-event-callback';
 import {unionMapValues, unionSets} from './utils';
 
@@ -229,6 +233,23 @@ export type UseFieldArrayProps<T> = {
    * The {@link Control} object from the parent.
    */
   control: Control<T[]>;
+
+  /**
+   * Validation function that validates the field value.
+   *
+   * For efficiency reasons it's important to return {@link NO_FIELD_ERRORS} if
+   * the value is valid, rather than a new empty {@link Set}. Returning a new
+   * empty set also works but might cause more re-renders.
+   *
+   * Note the this shouldn't include validation already done by the child
+   * {@link UseFieldArrayReturn.fields}. This prop is typically used to e.g.
+   * validate the length of the array.
+   *
+   * @param value The value to validate.
+   * @returns A set of errors. If the set is empty the value is considered
+   * valid.
+   */
+  validate?: (value: T[]) => Set<FieldError>;
 };
 
 export type UseFieldArrayField<T> = {
@@ -272,6 +293,7 @@ export type UseFieldArrayReturn<T> = {
  */
 export const useFieldArray = <T>({
   control,
+  validate,
 }: UseFieldArrayProps<T>): UseFieldArrayReturn<T> => {
   const {onChange, ref, initialValue, value, validationMode} = control;
 
@@ -300,31 +322,57 @@ export const useFieldArray = <T>({
     childRefs.current = new Array(initialValue.length).fill(null);
   }
 
+  // Validation state:
+  //
+  // Validation is event-driven (happens e.g. when `onChangeItem` is called).
+  const errors = React.useRef(NO_FIELD_ERRORS);
+
+  const validateAndSetErrors = React.useCallback(
+    (val: T[]) => {
+      // Compute new state:
+      let newErrors = validate?.(val) ?? NO_FIELD_ERRORS;
+      // Optimization: we only return a different object if re-validating
+      // returns a different set of errors. This will make re-renders less
+      // likely.
+      newErrors = fieldErrorSetsDeepEqual(newErrors, errors.current)
+        ? errors.current
+        : newErrors;
+
+      // Update state:
+      errors.current = newErrors;
+      return newErrors;
+    },
+    [validate],
+  );
+
   type OnChangeItem = (
-    newValue: T,
+    newItemValue: T,
     fieldState: InternalFieldState,
     index: number,
   ) => void;
   const onChangeItem: OnChangeItem = useEventCallback(
-    (newItemValue, {isDirty, errors: newErrors}, index) => {
+    (newItemValue, {isDirty, errors: newItemErrors}, index) => {
       // Optimization: don't do anything if nothing changed.
       const errors = fieldErrors.current.get(index);
       if (
         newItemValue === value[index] &&
         isDirty === dirtyBits.current.get(index) &&
-        (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
+        (newItemErrors === errors ||
+          (newItemErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
 
       const newValue = value.map((v, i) => (i === index ? newItemValue : v));
       dirtyBits.current = dirtyBits.current.set(index, isDirty);
-      fieldErrors.current = fieldErrors.current.set(index, newErrors);
+      fieldErrors.current = fieldErrors.current.set(index, newItemErrors);
+      const newErrors = validateAndSetErrors(newValue);
+      const allErrors = unionSets([newErrors, fieldErrors.current.allErrors]);
       onChange(newValue, {
         isDirty:
           newValue.length !== initialValue.length ||
           dirtyBits.current.isAnyTrue,
-        errors: fieldErrors.current.allErrors,
+        errors: allErrors,
       });
     },
   );
@@ -366,13 +414,16 @@ export const useFieldArray = <T>({
           ];
         }
 
+        const newErrors = validateAndSetErrors(nextValue);
+        const allErrors = unionSets([newErrors, fieldErrors.current.allErrors]);
+
         // Since we changed e.g. `dirtyBits` we need to notify the parent as
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
         // current state corresponds to what has been communicated to the parent
         // aren't valid.
         onChange(nextValue, {
           isDirty: dirtyBits.current.isAnyTrue,
-          errors: fieldErrors.current.allErrors,
+          errors: allErrors,
         });
 
         childRefs.current.forEach((childRef, index) =>
@@ -380,7 +431,7 @@ export const useFieldArray = <T>({
         );
       }
     },
-    [initialValue, onChange, value.length],
+    [initialValue, onChange, validateAndSetErrors, value.length],
   );
 
   const setValueMethod: FieldRefSetValue<T[]> = React.useCallback(
@@ -408,13 +459,16 @@ export const useFieldArray = <T>({
         fieldErrors.current = fieldErrors.current.slice(0, newValue.length);
       }
 
+      const newErrors = validateAndSetErrors(newValue);
+      const allErrors = unionSets([newErrors, fieldErrors.current.allErrors]);
+
       // We can't rely on future calls to `onChangeItem` to propagate the change
       // as if we e.g. remove all rows we won't get any calls.
       onChange(newValue, {
         isDirty:
           newValue.length !== initialValue.length ||
           dirtyBits.current.isAnyTrue,
-        errors: fieldErrors.current.allErrors,
+        errors: allErrors,
       });
 
       // If we added new children some of the refs might be null. These new
@@ -424,18 +478,18 @@ export const useFieldArray = <T>({
         childRefs.current[i]?.setValue(newValue[i], options);
       }
     },
-    [initialValue.length, onChange, value],
+    [initialValue.length, onChange, validateAndSetErrors, value],
   );
 
-  const validateMethod = React.useCallback(
-    () =>
-      unionSets(
-        childRefs.current.map(
-          childRef => childRef?.validate() ?? NO_FIELD_ERRORS,
-        ),
+  const validateMethod = React.useCallback(() => {
+    const newErrors = validateAndSetErrors(value);
+    return unionSets([
+      newErrors,
+      ...childRefs.current.map(
+        childRef => childRef?.validate() ?? NO_FIELD_ERRORS,
       ),
-    [],
-  );
+    ]);
+  }, [validateAndSetErrors, value]);
 
   React.useImperativeHandle(
     ref,
@@ -449,14 +503,17 @@ export const useFieldArray = <T>({
       dirtyBits.current = dirtyBits.current.push(false);
       fieldErrors.current = fieldErrors.current.push(NO_FIELD_ERRORS);
       childRefs.current = [...childRefs.current, null];
+      const newErrors = validateAndSetErrors(newValue);
+      const allErrors = unionSets([newErrors, fieldErrors.current.allErrors]);
+
       onChange(newValue, {
         isDirty:
           newValue.length !== initialValue.length ||
           dirtyBits.current.isAnyTrue,
-        errors: fieldErrors.current.allErrors,
+        errors: allErrors,
       });
     },
-    [initialValue.length, onChange, value],
+    [initialValue.length, onChange, validateAndSetErrors, value],
   );
 
   const remove = React.useCallback(
@@ -469,14 +526,17 @@ export const useFieldArray = <T>({
       dirtyBits.current = dirtyBits.current.remove(index);
       fieldErrors.current = fieldErrors.current.remove(index);
       childRefs.current.filter((_, i) => i !== index);
+      const newErrors = validateAndSetErrors(newValue);
+      const allErrors = unionSets([newErrors, fieldErrors.current.allErrors]);
+
       onChange(newValue, {
         isDirty:
           newValue.length !== initialValue.length ||
           dirtyBits.current.isAnyTrue,
-        errors: fieldErrors.current.allErrors,
+        errors: allErrors,
       });
     },
-    [initialValue.length, onChange, value],
+    [initialValue.length, onChange, validateAndSetErrors, value],
   );
 
   return React.useMemo(
