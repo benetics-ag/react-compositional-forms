@@ -32,33 +32,28 @@ const ArrayTest = ({
   const onSuccess = React.useCallback(() => setSubmitStatus('success'), []);
   const onInvalid = React.useCallback(() => setSubmitStatus('failure'), []);
 
-  const {append, fields, remove} = useFieldArray({
+  const {append, errors, fields, remove} = useFieldArray({
     control: controlForm,
     validate,
   });
 
   return (
     <div>
-      <div>
-        {fields.map(({control: controlField}, index) => (
-          <div key={index}>
-            <TextField
-              name={index.toString()}
-              parentControl={controlField}
-              validate={value =>
-                value.length > 0
-                  ? NO_FIELD_ERRORS
-                  : new Set([{message: 'Required'}])
-              }
-            />
-            <button
-              onClick={() => remove(index)}
-              title={`remove row ${index}`}
-            />
-          </div>
-        ))}
-        <button onClick={() => append('')} title="add row" />
-      </div>
+      {fields.map(({control: controlField}, index) => (
+        <div key={index}>
+          <TextField
+            name={index.toString()}
+            parentControl={controlField}
+            validate={value =>
+              value.length > 0
+                ? NO_FIELD_ERRORS
+                : new Set([{message: 'Required'}])
+            }
+          />
+          <button onClick={() => remove(index)} title={`remove row ${index}`} />
+        </div>
+      ))}
+      <button onClick={() => append('')} title="add row" />
       <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
         onClick={() => reset(undefined, {keepDirtyValues: true})}
@@ -72,6 +67,7 @@ const ArrayTest = ({
       <button onClick={() => setValue([])} title="set value with no rows" />
       <button onClick={() => setValue([''])} title="clear value" />
       <button onClick={handleSubmit(onSuccess, onInvalid)} title="submit" />
+      {errors.size > 0 ? <p>Array errors: {stringifyErrors(errors)}</p> : null}
       <p>Form: {JSON.stringify(formValue)}</p>
       {formIsDirty ? <p>Form dirty</p> : null}
       {formIsValid ? <p>Form valid</p> : null}
@@ -113,6 +109,7 @@ describe('FieldArray', () => {
       );
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
+      expect(screen.queryByText('Array errors: Too few elements')).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();
     });
@@ -165,12 +162,16 @@ describe('FieldArray', () => {
       await user.type(screen.getByTestId('input-0'), '1');
 
       // Goes from invalid to valid:
+      expect(screen.queryByText('Array errors: Too many elements')).toBeNull();
       expect(screen.queryByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();
 
       await user.type(screen.getByTestId('input-0'), '1');
 
       // Goes from valid to invalid:
+      expect(
+        screen.getByText('Array errors: Field 0 must be "11"'),
+      ).toBeTruthy();
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(
         screen.getByText('Form errors: Field 0 must be "11"'),
@@ -263,12 +264,14 @@ describe('FieldArray', () => {
       await user.click(screen.getByRole('button', {name: 'add row'}));
 
       // Goes from invalid to valid:
+      expect(screen.queryByText('Array errors: Too many elements')).toBeNull();
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Too many elements')).toBeNull();
 
       await user.click(screen.getByRole('button', {name: 'add row'}));
 
       // Goes from valid to invalid:
+      expect(screen.getByText('Array errors: Too many elements')).toBeTruthy();
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Form errors: Too many elements')).toBeTruthy();
     });
@@ -378,8 +381,6 @@ describe('FieldArray', () => {
       expect(screen.getByText('Form valid')).toBeTruthy();
     });
 
-    // TODO(tibbe): Continue here by implementing below test and also for
-    // `reset` et. al.
     it('validates on same length', async () => {
       render(
         <ArrayTest
@@ -395,6 +396,7 @@ describe('FieldArray', () => {
 
       await user.click(screen.getByRole('button', {name: 'set value'}));
 
+      expect(screen.getByText('Array errors: Not one element')).toBeTruthy();
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Form errors: Not one element')).toBeTruthy();
     });
@@ -542,6 +544,7 @@ describe('FieldArray', () => {
       await user.click(screen.getByRole('button', {name: 'reset'}));
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
+      expect(screen.queryByText('Array errors: Not one element')).toBeNull();
       expect(screen.queryByText('Form valid')).toBeTruthy();
       expect(
         screen.queryByText('Form errors: Not one element, Required'),
@@ -649,6 +652,9 @@ describe('FieldArray', () => {
       expect(
         screen.getByText('Form errors: Field 0 must be "1", Required'),
       ).toBeTruthy();
+      expect(
+        screen.getByText('Array errors: Field 0 must be "1"'),
+      ).toBeTruthy();
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Submit failure')).toBeTruthy();
 
@@ -656,6 +662,9 @@ describe('FieldArray', () => {
       await user.click(screen.getByRole('button', {name: 'submit'}));
 
       expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
+      expect(
+        screen.queryByText('Array errors: Field 0 must be "1"'),
+      ).toBeNull();
       expect(
         screen.queryByText('Form errors: Field 0 must be "1", Required'),
       ).toBeNull();

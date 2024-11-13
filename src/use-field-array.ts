@@ -268,6 +268,15 @@ export type UseFieldArrayReturn<T> = {
   append: (initialItemValue: T) => void;
 
   /**
+   * Current validation errors of the array.
+   *
+   * This does not include errors of the child fields.
+   *
+   * If empty the field is valid.
+   */
+  errors: Set<FieldError>;
+
+  /**
    * The current children.
    */
   fields: UseFieldArrayField<T>[];
@@ -325,21 +334,25 @@ export const useFieldArray = <T>({
   // Validation state:
   //
   // Validation is event-driven (happens e.g. when `onChangeItem` is called).
-  const errors = React.useRef(NO_FIELD_ERRORS);
+  const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
+
+  // Optimization: we keep track of the previous errors and only return a
+  // different object if re-validating returns a different set of errors.
+  // This will make re-renders less likely.
+  const prevErrors = React.useRef(NO_FIELD_ERRORS);
 
   const validateAndSetErrors = React.useCallback(
     (val: T[]) => {
       // Compute new state:
       let newErrors = validate?.(val) ?? NO_FIELD_ERRORS;
-      // Optimization: we only return a different object if re-validating
-      // returns a different set of errors. This will make re-renders less
-      // likely.
-      newErrors = fieldErrorSetsDeepEqual(newErrors, errors.current)
-        ? errors.current
+      // See comment on `prevErrors`.
+      newErrors = fieldErrorSetsDeepEqual(newErrors, prevErrors.current)
+        ? prevErrors.current
         : newErrors;
 
       // Update state:
-      errors.current = newErrors;
+      prevErrors.current = newErrors;
+      setErrors(newErrors);
       return newErrors;
     },
     [validate],
@@ -540,7 +553,7 @@ export const useFieldArray = <T>({
   );
 
   return React.useMemo(
-    () => ({append, fields, remove}),
-    [append, fields, remove],
+    () => ({append, errors, fields, remove}),
+    [append, errors, fields, remove],
   );
 };
