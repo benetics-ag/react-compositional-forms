@@ -7,7 +7,7 @@
     "build": "yarn clean && rollup -c",
     "clean": "rm -rf dist/* || true",
     "lint": "eslint .",
-    "prepare": "yarn build",
+    "prepack": "yarn build",
     "test": "jest",
     "tsc:no-emit": "tsc --noEmit --noErrorTruncation --pretty"
   },
