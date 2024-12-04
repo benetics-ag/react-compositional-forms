@@ -5,9 +5,9 @@
   "description": "Packages shared between app and web",
   "scripts": {
     "build": "yarn clean && rollup -c",
-    "clean": "rm -rf dist/* || true",
+    "clean": "rm -rf dist/*",
     "lint": "eslint .",
-    "prepare": "yarn build",
+    "prepack": "yarn build",
     "test": "jest",
     "tsc:no-emit": "tsc --noEmit --noErrorTruncation --pretty"
   },
