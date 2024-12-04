@@ -5,7 +5,7 @@
   "description": "Packages shared between app and web",
   "scripts": {
     "build": "yarn clean && rollup -c",
-    "clean": "rm -rf dist/*",
+    "clean": "rm -rf dist/* || true",
     "lint": "eslint .",
     "prepare": "yarn build",
     "test": "jest",
