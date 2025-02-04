@@ -149,22 +149,28 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   // - `dirtyBits` is a boolean object that tracks which elements are dirty and
   //   whether any element is dirty.
   // - `fieldErrors` is an object of sets of errors for each element in the
-  //   object and the combined set of errors
-  //
-  // Any update to these objects must be propagated to the parent via `onChange`
-  // as optimizations (e.g. in `onChangeItem`) relies on it.
-  const dirtyBits = React.useRef<BooleanMap<keyof O & string>>(
-    null as unknown as BooleanMap<keyof O & string>,
+  //   object and the combined set of errors.
+  const [dirtyBits, setDirtyBits] = React.useState<
+    BooleanMap<keyof O & string>
+  >(() => BooleanMap.create());
+  const [fieldErrors, setFieldErrors] = React.useState<ErrorMap<string>>(() =>
+    ErrorMap.create(),
   );
-  if (dirtyBits.current === null) {
-    dirtyBits.current = BooleanMap.create();
-  }
-  const fieldErrors = React.useRef<ErrorMap<string>>(
-    null as unknown as ErrorMap<string>,
+
+  // Dirty state:
+  const isDirty = React.useMemo(
+    () => value.length !== initialValue.length || dirtyBits.isAnyTrue,
+    [value.length, initialValue.length, dirtyBits.isAnyTrue],
   );
-  if (fieldErrors.current === null) {
-    fieldErrors.current = ErrorMap.create();
-  }
+
+  // TODO(tibbe): We might want to support a `validate` prop for additional
+  // validation at the level of the object, like we do in `useFieldArray`.
+
+  // Notify parent of changes:
+  React.useEffect(
+    () => onChange(value, {isDirty, errors: fieldErrors.allErrors}),
+    [value, isDirty, onChange, fieldErrors.allErrors],
+  );
 
   // Refs to the child fields.
   const childRefs = React.useRef<Record<keyof O, FieldRef<O[keyof O]> | null>>(
@@ -184,20 +190,20 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   const onChangeItem: OnChangeItem = useEventCallback(
     (newItemValue, {isDirty, errors: newErrors}, key) => {
       // Optimization: don't do anything if nothing changed.
-      const errors = fieldErrors.current.get(key);
+      const errors = fieldErrors.get(key);
       if (
         newItemValue === value[key] &&
-        isDirty === dirtyBits.current.get(key) &&
+        isDirty === dirtyBits.get(key) &&
         (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
       const newValue = {...value, [key]: newItemValue};
-      dirtyBits.current = dirtyBits.current.set(key, isDirty);
-      fieldErrors.current = fieldErrors.current.set(key, newErrors);
+      setDirtyBits(dirtyBits.set(key, isDirty));
+      setFieldErrors(fieldErrors.set(key, newErrors));
       onChange(newValue, {
-        isDirty: dirtyBits.current.isAnyTrue,
-        errors: fieldErrors.current.allErrors,
+        isDirty: dirtyBits.isAnyTrue,
+        errors: fieldErrors.allErrors,
       });
     },
   );
@@ -229,10 +235,10 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
     (newValue?: O, options?: ResetOptions) => {
       const {keepDirtyValues = false} = options || {};
       const nextInitialValue = newValue ?? initialValue;
-      const keepValue = keepDirtyValues && dirtyBits.current.isAnyTrue;
+      const keepValue = keepDirtyValues && dirtyBits.isAnyTrue;
       if (!keepValue) {
-        dirtyBits.current = BooleanMap.create();
-        fieldErrors.current = ErrorMap.create();
+        setDirtyBits(BooleanMap.create());
+        setFieldErrors(ErrorMap.create());
 
         // Since we changed e.g. `dirtyBits` we need to notify the parent as
         // otherwise optimizations in e.g. `onChangeItem` that assume that the
@@ -240,7 +246,7 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         // aren't valid.
         onChange(nextInitialValue, {
           isDirty: false,
-          errors: fieldErrors.current.allErrors,
+          errors: fieldErrors.allErrors,
         });
 
         Object.entries(childRefs.current).forEach(([key, childRef]) =>
@@ -248,7 +254,7 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         );
       }
     },
-    [initialValue, onChange],
+    [dirtyBits.isAnyTrue, fieldErrors.allErrors, initialValue, onChange],
   );
 
   const setValue: FieldRefSetValue<{[P in keyof O]: O[P]}> = React.useCallback(
