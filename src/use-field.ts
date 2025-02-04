@@ -157,7 +157,10 @@ export const useField = <T>({
     }
   });
 
-  const wrappedOnChange = useEventCallback((newValue: T) => {
+  /**
+   * The `onChange` handler that should be passed to the input element.
+   */
+  const fieldOnChange = useEventCallback((newValue: T) => {
     // Optimization: don't do anything if the value hasn't changed.
     if (Object.is(newValue, value)) {
       return;
@@ -206,8 +209,8 @@ export const useField = <T>({
   );
 
   const field = React.useMemo(
-    () => ({onBlur, onChange: wrappedOnChange, value}),
-    [onBlur, wrappedOnChange, value],
+    () => ({onBlur, onChange: fieldOnChange, value}),
+    [onBlur, fieldOnChange, value],
   );
 
   const fieldState = React.useMemo(
