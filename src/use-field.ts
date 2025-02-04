@@ -50,7 +50,7 @@ export type UseFieldFieldState = {
    * Is the field dirty?
    *
    * A field is considered dirty if its value has changed since it was first
-   * rendered.
+   * rendered, when compared using {@link UseFieldProps.equalsFn}.
    */
   isDirty: boolean;
 };
@@ -186,7 +186,6 @@ export const useField = <T>({
           // TODO(tibbe): Implement `onBlur`-triggered validation.
           break;
         case 'onChange':
-          // TODO(tibbe): Should also check if validateMode is onChange.
           validateAndSetErrors(newValue);
           break;
         case 'set':
