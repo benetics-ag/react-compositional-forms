@@ -159,7 +159,7 @@ export const useField = <T>({
 
   const wrappedOnChange = useEventCallback((newValue: T) => {
     // Optimization: don't do anything if the value hasn't changed.
-    if (newValue === value) {
+    if (Object.is(newValue, value)) {
       return;
     }
 
