@@ -163,10 +163,14 @@ export const useField = <T>({
       return;
     }
 
+    let newErrors = errors;
     if (validationMode === 'onChange') {
-      validateAndSetErrors(newValue);
+      newErrors = validateAndSetErrors(newValue);
     }
-    onChange(newValue, {isDirty, errors});
+    onChange(newValue, {
+      isDirty: !equalsFn(newValue, initialValue),
+      errors: newErrors,
+    });
   });
 
   const reset = React.useCallback(() => {
