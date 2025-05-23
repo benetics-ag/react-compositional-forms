@@ -241,10 +241,12 @@ describe('FieldObject', () => {
       await user.type(screen.getByTestId('input-a'), '1');
       await user.click(screen.getByRole('button', {name: 'reset'}));
 
-      // A reset form should be clean:
+      // A reset form should have the new initial value:
       expect(screen.getByTestId('input-a')).toHaveValue('3');
-      expect(screen.queryByText('Field a dirty')).toBeNull();
       expect(screen.getByTestId('input-b')).toHaveValue('4');
+
+      // A reset form should be clean:
+      expect(screen.queryByText('Field a dirty')).toBeNull();
       expect(screen.queryByText('Field b dirty')).toBeNull();
       expect(screen.queryByText('Form dirty')).toBeNull();
 
