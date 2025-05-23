@@ -463,9 +463,9 @@ export const useFieldArray = <T>({
       // for item 1 even if it was dirty and thus kept its errors.
       setDirtyBits(BooleanArray.fromLength(nextValue.length));
       setFieldErrors(ErrorArray.fromLength(nextValue.length));
-      if (nextValue.length < value.length) {
+      if (nextValue.length < childRefs.current.length) {
         childRefs.current = childRefs.current.slice(0, nextValue.length);
-      } else if (nextValue.length > value.length) {
+      } else if (nextValue.length > childRefs.current.length) {
         childRefs.current = [
           ...childRefs.current,
           ...new Array(nextValue.length - value.length).fill(null),
