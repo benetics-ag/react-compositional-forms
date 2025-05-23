@@ -239,6 +239,19 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
       setDirtyBits(BooleanMap.create());
       setFieldErrors(ErrorMap.create());
       const nextValue = newValue ?? initialValue;
+
+      // Keys might have been added or removed from the object. Keep existing
+      // refs where they exist.
+      const newChildRefs = Object.fromEntries(
+        Object.keys(nextValue).map(key => [key, null]),
+      ) as Record<keyof O, FieldRef<O[keyof O]> | null>;
+      Object.keys(newChildRefs).forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(childRefs.current, key)) {
+          newChildRefs[key as keyof O] = childRefs.current[key];
+        }
+      });
+      childRefs.current = newChildRefs;
+
       const updatedValue = Object.fromEntries(
         Object.entries(childRefs.current).map(([key, childRef]) => [
           key,
