@@ -292,13 +292,20 @@ export type UseFieldArrayReturn<T> = {
 /**
  * Combine child forms into an array.
  *
- * Validation: the field array is considered valid if all its children are
- * considered valid. The {@link FieldError}s from the children are combined into
- * a single field error {@link Set}.
+ * Validation: the field array is valid if all its children are valid and the
+ * array field itself is valid (see {@link UseFieldArrayProps.validate}). The
+ * {@link FieldError}s from the children are combined into a single field error
+ * {@link Set}.
  *
  * Dirty state: the field array is considered dirty if any of its children is
  * considered dirty or if the current length of the array is different from its
  * initial length.
+ *
+ * When {@link FieldRef.reset} is called and
+ * {@link ResetOptions.keepDirtyValues} is `true`
+ * - the array field will keep its current length, if it is different from the
+ *   length of the initial value, and
+ * - reset each child using their {@link FieldRef.reset} method.
  */
 export const useFieldArray = <T>({
   control,
@@ -334,7 +341,12 @@ export const useFieldArray = <T>({
 
   // Validation state:
   //
-  // Validation is event-driven (happens e.g. when `onChangeItem` is called).
+  // These are only the errors of the field array itself (i.e. the result of
+  // calling `validate`). The errors of the children are stored in `fieldErrors`
+  // and are combined with `errors` when notifying the parent.
+  //
+  // Validation is event-driven (happens when e.g. `append` or `remove` is
+  // called).
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
 
   // Notify parent of changes:
@@ -393,7 +405,7 @@ export const useFieldArray = <T>({
       const newErrors = validateAndSetErrors(newValue);
       const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
       onChange(newValue, {
-        isDirty: newValue.length !== initialValue.length || dirtyBits.isAnyTrue,
+        isDirty,
         errors: allErrors,
       });
     },
@@ -418,48 +430,52 @@ export const useFieldArray = <T>({
   );
 
   const reset = React.useCallback(
-    (newValue?: T[], options?: ResetOptions) => {
+    (newValue?: T[], options?: ResetOptions): T[] => {
       const {keepDirtyValues = false} = options || {};
-      const nextValue = newValue ?? initialValue;
-      const isDirty = value.length !== nextValue.length || dirtyBits.isAnyTrue;
-      const keepValue = keepDirtyValues && isDirty;
+      let nextValue = newValue ?? initialValue;
+      const isArrayLenDirty = value.length !== initialValue.length;
+      const keepValue = keepDirtyValues && isArrayLenDirty;
       if (!keepValue) {
-        setDirtyBits(BooleanArray.fromLength(nextValue.length));
-        setFieldErrors(ErrorArray.fromLength(nextValue.length));
-        if (nextValue.length < value.length) {
-          childRefs.current = childRefs.current.slice(0, nextValue.length);
-        } else if (nextValue.length > value.length) {
-          childRefs.current = [
-            ...childRefs.current,
-            ...new Array(nextValue.length - value.length).fill(null),
-          ];
-        }
-
-        const newErrors = validateAndSetErrors(nextValue);
-        const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
-
-        // Since we changed e.g. `dirtyBits` we need to notify the parent as
-        // otherwise optimizations in e.g. `onChangeItem` that assume that the
-        // current state corresponds to what has been communicated to the parent
-        // aren't valid.
-        onChange(nextValue, {
-          isDirty: dirtyBits.isAnyTrue,
-          errors: allErrors,
-        });
-
-        childRefs.current.forEach((childRef, index) =>
-          childRef?.reset(nextValue[index]),
-        );
+        setErrors(NO_FIELD_ERRORS);
       }
+      if (keepValue) {
+        // To keep the current length we might need to shorten or extend the
+        // new value.
+        if (value.length > nextValue.length) {
+          // `undefined` here will cause the child to be reset to its internally
+          // stored initial value (e.g. the one passed to `append`)
+          nextValue = nextValue.concat(
+            new Array(value.length - nextValue.length).fill(undefined),
+          );
+        } else if (value.length < nextValue.length) {
+          nextValue = nextValue.slice(0, value.length);
+        }
+      }
+
+      // TODO(tibbe): what do we do with the dirty bits and errors here? We will
+      // have incoming calls to `onChangeItem` once this function returns and
+      // they will pick up stale values from these. For example, if we get a
+      // call to update item 0 we will also communicate an empty set of errors
+      // for item 1 even if it was dirty and thus kept its errors.
+      setDirtyBits(BooleanArray.fromLength(nextValue.length));
+      setFieldErrors(ErrorArray.fromLength(nextValue.length));
+      if (nextValue.length < value.length) {
+        childRefs.current = childRefs.current.slice(0, nextValue.length);
+      } else if (nextValue.length > value.length) {
+        childRefs.current = [
+          ...childRefs.current,
+          ...new Array(nextValue.length - value.length).fill(null),
+        ];
+      }
+
+      return childRefs.current.map(
+        (childRef, index) =>
+          childRef?.reset(newValue && nextValue[index], options) ??
+          nextValue[index],
+        options,
+      );
     },
-    [
-      dirtyBits.isAnyTrue,
-      fieldErrors.allErrors,
-      initialValue,
-      onChange,
-      validateAndSetErrors,
-      value.length,
-    ],
+    [initialValue, value],
   );
 
   const setValueMethod: FieldRefSetValue<T[]> = React.useCallback(
@@ -489,7 +505,7 @@ export const useFieldArray = <T>({
       // We can't rely on future calls to `onChangeItem` to propagate the change
       // as if we e.g. remove all rows we won't get any calls.
       onChange(newValue, {
-        isDirty: newValue.length !== initialValue.length || dirtyBits.isAnyTrue,
+        isDirty,
         errors: allErrors,
       });
 
@@ -500,14 +516,7 @@ export const useFieldArray = <T>({
         childRefs.current[i]?.setValue(newValue[i], options);
       }
     },
-    [
-      dirtyBits,
-      fieldErrors,
-      initialValue.length,
-      onChange,
-      validateAndSetErrors,
-      value,
-    ],
+    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
   );
 
   const validateMethod = React.useCallback(() => {
@@ -536,18 +545,11 @@ export const useFieldArray = <T>({
       const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
 
       onChange(newValue, {
-        isDirty: newValue.length !== initialValue.length || dirtyBits.isAnyTrue,
+        isDirty,
         errors: allErrors,
       });
     },
-    [
-      dirtyBits,
-      fieldErrors,
-      initialValue.length,
-      onChange,
-      validateAndSetErrors,
-      value,
-    ],
+    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
   );
 
   const remove = React.useCallback(
@@ -564,18 +566,11 @@ export const useFieldArray = <T>({
       const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
 
       onChange(newValue, {
-        isDirty: newValue.length !== initialValue.length || dirtyBits.isAnyTrue,
+        isDirty,
         errors: allErrors,
       });
     },
-    [
-      dirtyBits,
-      fieldErrors,
-      initialValue.length,
-      onChange,
-      validateAndSetErrors,
-      value,
-    ],
+    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
   );
 
   return React.useMemo(

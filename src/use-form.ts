@@ -211,15 +211,11 @@ export const useForm = <T>({
   const reset = useEventCallback((newValue?: T, options?: ResetOptions) => {
     setIsSubmitted(false);
     setIsSubmitSuccessful(false);
-    const {keepDirtyValues = false} = options || {};
     if (newValue !== undefined) {
       setInitialValue(newValue);
     }
-    const keepValue = keepDirtyValues && isDirty;
-    if (!keepValue) {
-      setValue(newValue ?? initialValue);
-    }
-    ref.current?.reset(newValue, options);
+    const updatedValue = ref.current?.reset(newValue, options) ?? initialValue;
+    setValue(updatedValue);
   });
 
   const formState = React.useMemo(

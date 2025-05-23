@@ -1,6 +1,11 @@
 import React from 'react';
 
-import {Control, FieldRefSetValue, SetValueOptions} from './control';
+import {
+  Control,
+  FieldRefSetValue,
+  ResetOptions,
+  SetValueOptions,
+} from './control';
 import {
   FieldError,
   fieldErrorSetsDeepEqual,
@@ -176,9 +181,17 @@ export const useField = <T>({
     });
   });
 
-  const reset = React.useCallback(() => {
-    setErrors(NO_FIELD_ERRORS);
-  }, []);
+  const reset = React.useCallback(
+    (newValue: T = initialValue, options?: ResetOptions) => {
+      const {keepDirtyValues = false} = options || {};
+      const keepValue = keepDirtyValues && isDirty;
+      if (!keepValue) {
+        setErrors(NO_FIELD_ERRORS);
+      }
+      return keepValue ? value : newValue;
+    },
+    [initialValue, isDirty, value],
+  );
 
   const validateMethod = React.useCallback(
     () => validateAndSetErrors(value),
