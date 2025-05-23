@@ -417,7 +417,11 @@ export const useFieldArray = <T>({
         control: {
           onChange: (...args) => onChangeItem(...args, index),
           ref: (childRef: FieldRef<T>) => {
-            childRefs.current[index] = childRef;
+            // If the child has been removed since `fields` was created ignore
+            // any attempts to set the ref.
+            if (index < childRefs.current.length) {
+              childRefs.current[index] = childRef;
+            }
           },
           // TODO(tibbe): Should we instead have an `initialItemValue` prop on
           // `useFieldArray`.
@@ -561,7 +565,7 @@ export const useFieldArray = <T>({
       const newValue = value.filter((_, i) => i !== index);
       setDirtyBits(dirtyBits.remove(index));
       setFieldErrors(fieldErrors.remove(index));
-      childRefs.current.filter((_, i) => i !== index);
+      childRefs.current = childRefs.current.filter((_, i) => i !== index);
       const newErrors = validateAndSetErrors(newValue);
       const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
 
