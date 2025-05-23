@@ -264,11 +264,31 @@ describe('FieldObject', () => {
       await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
 
       expect(screen.getByTestId('input-a')).toHaveValue('1');
-      expect(screen.getByText('Field a dirty')).toBeTruthy();
       expect(screen.getByTestId('input-b')).toHaveValue('3');
-      expect(screen.queryByText('Field b dirty')).toBeNull();
       expect(screen.getByText('Form: {"a":"1","b":"3"}')).toBeTruthy();
+    });
+
+    it('can keep dirty value state', async () => {
+      render(<ObjectTest />);
+
+      // Goes from clean to dirty:
+      await user.type(screen.getByTestId('input-a'), '1');
+      await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
+
+      expect(screen.getByText('Field a dirty')).toBeTruthy();
+      expect(screen.queryByText('Field b dirty')).toBeNull();
       expect(screen.getByText('Form dirty')).toBeTruthy();
+    });
+
+    it('can keep dirty value errors', async () => {
+      render(<ObjectTest initialValue={{a: '1', b: ''}} />);
+
+      // Goes from valid to invalid:
+      await user.clear(screen.getByTestId('input-a'));
+      await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
+
+      expect(screen.queryByText('Form valid')).toBeNull();
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
     });
   });
 
