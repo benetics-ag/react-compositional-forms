@@ -232,29 +232,23 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   );
 
   const reset = React.useCallback(
-    (newValue?: O, options?: ResetOptions) => {
-      const {keepDirtyValues = false} = options || {};
-      const nextInitialValue = newValue ?? initialValue;
-      const keepValue = keepDirtyValues && dirtyBits.isAnyTrue;
-      if (!keepValue) {
-        setDirtyBits(BooleanMap.create());
-        setFieldErrors(ErrorMap.create());
-
-        // Since we changed e.g. `dirtyBits` we need to notify the parent as
-        // otherwise optimizations in e.g. `onChangeItem` that assume that the
-        // current state corresponds to what has been communicated to the parent
-        // aren't valid.
-        onChange(nextInitialValue, {
-          isDirty: false,
-          errors: fieldErrors.allErrors,
-        });
-
-        Object.entries(childRefs.current).forEach(([key, childRef]) =>
-          childRef?.reset(nextInitialValue[key as keyof O]),
-        );
-      }
+    (newValue?: O, options?: ResetOptions): O => {
+      // TODO(tibbe): what do we do with the dirty bits and errors here? We will
+      // have incoming calls to `onChangeItem` once this function returns and
+      // they will pick up stale values from these.
+      setDirtyBits(BooleanMap.create());
+      setFieldErrors(ErrorMap.create());
+      const nextValue = newValue ?? initialValue;
+      const updatedValue = Object.fromEntries(
+        Object.entries(childRefs.current).map(([key, childRef]) => [
+          key,
+          childRef?.reset(newValue && nextValue[key as keyof O], options) ??
+            nextValue[key as keyof O],
+        ]),
+      );
+      return updatedValue as O;
     },
-    [dirtyBits.isAnyTrue, fieldErrors.allErrors, initialValue, onChange],
+    [initialValue],
   );
 
   const setValue: FieldRefSetValue<{[P in keyof O]: O[P]}> = React.useCallback(
@@ -272,6 +266,8 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
           return;
         }
 
+        // TODO(tibbe): Could this cause an issue if this changes `isDirty` or
+        // `errors` for the child but we don't update e.g. `dirtyBits`?
         childRef?.setValue(newPropValue, options);
       });
     },

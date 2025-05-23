@@ -14,7 +14,14 @@ export type ControlOnChange<T> = (
 ) => void;
 
 export type ResetOptions = {
-  /** If true keep values in fields that were dirty before the reset. */
+  /**
+   * If `true`, don't reset dirty fields' `value` and `errors`.
+   *
+   * The field's `initialValue` will still be reset. If the `initialValue` is
+   * different from the current `value` the field will be marked as dirty.
+   *
+   * Kept values also keep their errors.
+   */
   keepDirtyValues: boolean;
 };
 
@@ -42,9 +49,13 @@ export type FieldRef<T> = {
   /**
    * Reset the field and any child fields to their initial value.
    *
+   * Reset fields have no errors, just like when the form is first created.
+   *
    * If `value` is provided, the initial value is first set to `value`.
+   *
+   * @returns The new value of the field.
    */
-  reset: (value?: T, options?: ResetOptions) => void;
+  reset: (value?: T, options?: ResetOptions) => T;
 
   /**
    * Set the value of the field.

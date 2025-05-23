@@ -50,7 +50,7 @@ const ObjectTest = ({
       </div>
       <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
-        onClick={() => reset(undefined, {keepDirtyValues: true})}
+        onClick={() => reset(resetNewInitialValue, {keepDirtyValues: true})}
         title="reset non-dirty"
       />
       <button
@@ -256,13 +256,16 @@ describe('FieldObject', () => {
     });
 
     it('can keep dirty value', async () => {
-      render(<ObjectTest />);
+      render(<ObjectTest resetNewInitialValue={{a: '2', b: '3'}} />);
 
       await user.type(screen.getByTestId('input-a'), '1');
       await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
 
       expect(screen.getByTestId('input-a')).toHaveValue('1');
       expect(screen.getByText('Field a dirty')).toBeTruthy();
+      expect(screen.getByTestId('input-b')).toHaveValue('3');
+      expect(screen.queryByText('Field b dirty')).toBeNull();
+      expect(screen.getByText('Form: {"a":"1","b":"3"}')).toBeTruthy();
       expect(screen.getByText('Form dirty')).toBeTruthy();
     });
   });
