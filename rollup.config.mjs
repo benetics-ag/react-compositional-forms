@@ -1,6 +1,6 @@
 import typescript from '@rollup/plugin-typescript';
 
-import packageJson from './package.json' assert {type: 'json'};
+import packageJson from './package.json' with {type: 'json'};
 
 export default [
   {
