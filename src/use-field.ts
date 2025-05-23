@@ -116,6 +116,7 @@ export const useField = <T>({
   validate,
 }: UseFieldProps<T>): UseFieldReturn<T> => {
   const {onChange, ref, initialValue, value, validationMode} = control;
+  const firstRender = React.useRef(true);
 
   // Dirty state:
   const isDirty = React.useMemo(
@@ -129,10 +130,16 @@ export const useField = <T>({
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
 
   // Notify parent of changes:
-  React.useEffect(
-    () => onChange(value, {isDirty, errors}),
-    [value, isDirty, errors, onChange],
-  );
+  React.useEffect(() => {
+    // `useEffect` is called after the first render, so we need to skip the
+    // first render to avoid calling `onChange` with the initial value. While
+    // not incorrect it can cause unnecessary re-renders and can be confusing.
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    onChange(value, {isDirty, errors});
+  }, [value, isDirty, errors, onChange]);
 
   // Optimization: we keep track of the previous errors and only return a
   // different object if re-validating returns a different set of errors.
