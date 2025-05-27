@@ -400,12 +400,15 @@ export const useFieldArray = <T>({
       }
 
       const newValue = value.map((v, i) => (i === index ? newItemValue : v));
-      setDirtyBits(dirtyBits.set(index, isDirty));
-      setFieldErrors(fieldErrors.set(index, newItemErrors));
+      const newDirtyBits = dirtyBits.set(index, isDirty);
+      const newFieldErrors = fieldErrors.set(index, newItemErrors);
+      setDirtyBits(newDirtyBits);
+      setFieldErrors(newFieldErrors);
       const newErrors = validateAndSetErrors(newValue);
-      const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
+      const allErrors = unionSets([newErrors, newFieldErrors.allErrors]);
       onChange(newValue, {
-        isDirty,
+        isDirty:
+          newValue.length !== initialValue.length || newDirtyBits.isAnyTrue,
         errors: allErrors,
       });
     },
@@ -542,18 +545,28 @@ export const useFieldArray = <T>({
   const append = React.useCallback(
     (initialItemValue: T) => {
       const newValue = [...value, initialItemValue];
-      setDirtyBits(dirtyBits.push(false));
-      setFieldErrors(fieldErrors.push(NO_FIELD_ERRORS));
+      const newDirtyBits = dirtyBits.push(false);
+      const newFieldErrors = fieldErrors.push(NO_FIELD_ERRORS);
+      setDirtyBits(newDirtyBits);
+      setFieldErrors(newFieldErrors);
       childRefs.current = [...childRefs.current, null];
       const newErrors = validateAndSetErrors(newValue);
-      const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
+      const allErrors = unionSets([newErrors, newFieldErrors.allErrors]);
 
       onChange(newValue, {
-        isDirty,
+        isDirty:
+          newValue.length !== initialValue.length || newDirtyBits.isAnyTrue,
         errors: allErrors,
       });
     },
-    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
+    [
+      dirtyBits,
+      fieldErrors,
+      initialValue.length,
+      onChange,
+      validateAndSetErrors,
+      value,
+    ],
   );
 
   const remove = React.useCallback(
@@ -563,18 +576,28 @@ export const useFieldArray = <T>({
         return;
       }
       const newValue = value.filter((_, i) => i !== index);
-      setDirtyBits(dirtyBits.remove(index));
-      setFieldErrors(fieldErrors.remove(index));
+      const newDirtyBits = dirtyBits.remove(index);
+      const newFieldErrors = fieldErrors.remove(index);
+      setDirtyBits(newDirtyBits);
+      setFieldErrors(newFieldErrors);
       childRefs.current = childRefs.current.filter((_, i) => i !== index);
       const newErrors = validateAndSetErrors(newValue);
-      const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
+      const allErrors = unionSets([newErrors, newFieldErrors.allErrors]);
 
       onChange(newValue, {
-        isDirty,
+        isDirty:
+          newValue.length !== initialValue.length || newDirtyBits.isAnyTrue,
         errors: allErrors,
       });
     },
-    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
+    [
+      dirtyBits,
+      fieldErrors,
+      initialValue.length,
+      onChange,
+      validateAndSetErrors,
+      value,
+    ],
   );
 
   return React.useMemo(

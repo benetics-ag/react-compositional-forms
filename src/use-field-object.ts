@@ -199,11 +199,15 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         return;
       }
       const newValue = {...value, [key]: newItemValue};
-      setDirtyBits(dirtyBits.set(key, isDirty));
-      setFieldErrors(fieldErrors.set(key, newErrors));
+      const newDirtyBits = dirtyBits.set(key, isDirty);
+      const newFieldErrors = fieldErrors.set(key, newErrors);
+      setDirtyBits(newDirtyBits);
+      setFieldErrors(newFieldErrors);
       onChange(newValue, {
-        isDirty: dirtyBits.isAnyTrue,
-        errors: fieldErrors.allErrors,
+        // TODO(tibbe): Should we allow the number of properties to change and
+        // thus mark this field as dirty?
+        isDirty: newDirtyBits.isAnyTrue,
+        errors: newFieldErrors.allErrors,
       });
     },
   );
