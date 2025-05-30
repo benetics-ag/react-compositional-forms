@@ -1,20 +1,26 @@
 name: ci
+
 on:
+  push:
+    branches: ['main']
   pull_request:
-    branches:
-      - main
+    branches: ['main']
 
 jobs:
   lint-type-check-and-test:
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Enable Corepack
         run: corepack enable
-      - uses: actions/setup-node@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ matrix.node-version }}
           cache: 'yarn'
       - name: Install yarn dependencies
         run: yarn install --immutable
