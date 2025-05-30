@@ -1,6 +1,9 @@
+import {createRequire} from 'node:module';
 import typescript from '@rollup/plugin-typescript';
 
-import packageJson from './package.json' with {type: 'json'};
+const require = createRequire(import.meta.url);
+
+const packageJson = require('./package.json');
 
 export default [
   {
