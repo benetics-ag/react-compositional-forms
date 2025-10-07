@@ -8,7 +8,7 @@ const packageJson = require('./package.json');
 export default [
   {
     input: 'src/index.ts',
-    external: ['react'],
+    external: ['react', 'react/jsx-runtime'],
     output: [
       {
         file: packageJson.exports['.'].import,
@@ -21,11 +21,13 @@ export default [
         sourcemap: true,
       },
     ],
-    plugins: [typescript({exclude: ['**/__tests__', '**/*.test.ts']})],
+    plugins: [
+      typescript({exclude: ['**/__tests__', '**/*.test.ts', '**/*.test.tsx']}),
+    ],
   },
   {
     input: 'src/validation.ts',
-    external: ['react'],
+    external: ['react', 'react/jsx-runtime'],
     output: [
       {
         file: packageJson.exports['./validation'].import,
@@ -38,6 +40,8 @@ export default [
         sourcemap: true,
       },
     ],
-    plugins: [typescript({exclude: ['**/__tests__', '**/*.test.ts']})],
+    plugins: [
+      typescript({exclude: ['**/__tests__', '**/*.test.ts', '**/*.test.tsx']}),
+    ],
   },
 ];
