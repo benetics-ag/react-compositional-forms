@@ -15,13 +15,11 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "react-native": "./dist/index.js",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./validation": {
       "types": "./dist/validation.d.ts",
-      "react-native": "./dist/validation.js",
       "import": "./dist/validation.js",
       "require": "./dist/validation.cjs"
     },
