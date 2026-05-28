@@ -28,7 +28,7 @@ export type UseFieldField<T> = {
   onBlur: () => void;
 
   /**
-   * Updates the fields value.
+   * Updates the field's value.
    *
    * Typically assigned to the `onChange` prop of an input element.
    */
