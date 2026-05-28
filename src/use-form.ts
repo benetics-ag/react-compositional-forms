@@ -118,7 +118,7 @@ export type UseFormReturn<T> = {
    */
   handleSubmit: UseFormHandleSubmit<T>;
 
-  /** Reset the form to its intial value. */
+  /** Reset the form to its initial value. */
   reset: (value?: T, options?: ResetOptions) => void;
 
   /** Set the value of the form. */

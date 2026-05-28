@@ -262,9 +262,8 @@ export type UseFieldArrayProps<T> = {
    * the value is valid, rather than a new empty {@link Set}. Returning a new
    * empty set also works but might cause more re-renders.
    *
-   * Note the this shouldn't include validation already done by the child
-   * {@link UseFieldArrayReturn.fields}. This prop is typically used to e.g.
-   * validate the length of the array.
+   * Use this for array-level validation, such as checking the length of the
+   * array. Child field validation is handled by each child control.
    *
    * @param value The value to validate.
    * @returns A set of errors. If the set is empty the value is considered
