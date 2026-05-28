@@ -214,7 +214,9 @@ export const useForm = <T>({
     if (newValue !== undefined) {
       setInitialValue(newValue);
     }
-    const updatedValue = ref.current?.reset(newValue, options) ?? initialValue;
+    const updatedValue =
+      ref.current?.reset(newValue, options) ??
+      (newValue !== undefined ? newValue : initialValue);
     setValue(updatedValue);
   });
 
