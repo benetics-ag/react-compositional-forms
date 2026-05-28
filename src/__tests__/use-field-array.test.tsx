@@ -324,6 +324,20 @@ describe('FieldArray', () => {
 
       expect(screen.getByText('Form valid')).toBeTruthy();
     });
+
+    it('validates remaining row after removing earlier row', async () => {
+      render(<ArrayTest initialValue={['1', '']} />);
+
+      await user.click(screen.getByRole('button', {name: 'submit'}));
+
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
+
+      await user.click(screen.getByRole('button', {name: 'remove row 0'}));
+      await user.type(screen.getByTestId('input-0'), '2');
+
+      expect(screen.getByText('Form valid')).toBeTruthy();
+      expect(screen.queryByText('Form errors: Required')).toBeNull();
+    });
   });
 
   describe('setValue', () => {

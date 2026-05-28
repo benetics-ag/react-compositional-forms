@@ -195,17 +195,38 @@ class ErrorArray {
   }
 
   remove(index: number): ErrorArray {
-    const prevValue = this.errors.get(index);
-
-    // Optimization: no need to create a new object if the value hasn't changed.
-    if (prevValue === undefined) {
-      return this;
+    if (this.errors.size === 0) {
+      return ErrorArray.fromLength(this.length - 1);
     }
 
-    const errors = new Map(this.errors);
-    errors.delete(index);
+    let hasRemovedError = false;
+    let hasShiftedError = false;
+    for (const key of this.errors.keys()) {
+      if (key === index) {
+        hasRemovedError = true;
+      } else if (key > index) {
+        hasShiftedError = true;
+      }
+    }
 
-    return new ErrorArray(errors, this.length, unionMapValues(errors));
+    if (!hasRemovedError && !hasShiftedError) {
+      return new ErrorArray(this.errors, this.length - 1, this.combined);
+    }
+
+    const errors = new Map<number, Set<FieldError>>();
+    this.errors.forEach((value, key) => {
+      if (key < index) {
+        errors.set(key, value);
+      } else if (key > index) {
+        errors.set(key - 1, value);
+      }
+    });
+
+    return new ErrorArray(
+      errors,
+      this.length - 1,
+      hasRemovedError ? unionMapValues(errors) : this.combined,
+    );
   }
 
   slice(start: number, end: number): ErrorArray {
