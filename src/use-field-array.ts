@@ -344,6 +344,12 @@ export const useFieldArray = <T>({
   const [fieldErrors, setFieldErrors] = React.useState<ErrorArray>(() =>
     ErrorArray.fromLength(initialValue.length),
   );
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+  const dirtyBitsRef = React.useRef(dirtyBits);
+  dirtyBitsRef.current = dirtyBits;
+  const fieldErrorsRef = React.useRef(fieldErrors);
+  fieldErrorsRef.current = fieldErrors;
 
   // Refs to the child fields.
   const childRefs = React.useRef<Array<FieldRef<T> | null>>(
@@ -408,20 +414,29 @@ export const useFieldArray = <T>({
   ) => void;
   const onChangeItem: OnChangeItem = useEventCallback(
     (newItemValue, {isDirty, errors: newItemErrors}, index) => {
+      const currentValue = valueRef.current;
+      const currentDirtyBits = dirtyBitsRef.current;
+      const currentFieldErrors = fieldErrorsRef.current;
+
       // Optimization: don't do anything if nothing changed.
-      const errors = fieldErrors.get(index);
+      const errors = currentFieldErrors.get(index);
       if (
-        newItemValue === value[index] &&
-        isDirty === dirtyBits.get(index) &&
+        newItemValue === currentValue[index] &&
+        isDirty === currentDirtyBits.get(index) &&
         (newItemErrors === errors ||
           (newItemErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
 
-      const newValue = value.map((v, i) => (i === index ? newItemValue : v));
-      const newDirtyBits = dirtyBits.set(index, isDirty);
-      const newFieldErrors = fieldErrors.set(index, newItemErrors);
+      const newValue = currentValue.map((v, i) =>
+        i === index ? newItemValue : v,
+      );
+      const newDirtyBits = currentDirtyBits.set(index, isDirty);
+      const newFieldErrors = currentFieldErrors.set(index, newItemErrors);
+      valueRef.current = newValue;
+      dirtyBitsRef.current = newDirtyBits;
+      fieldErrorsRef.current = newFieldErrors;
       setDirtyBits(newDirtyBits);
       setFieldErrors(newFieldErrors);
       const newErrors = validateAndSetErrors(newValue);
@@ -460,7 +475,8 @@ export const useFieldArray = <T>({
     (newValue?: T[], options?: ResetOptions): T[] => {
       const {keepDirtyValues = false} = options || {};
       let nextValue = newValue ?? initialValue;
-      const isArrayLenDirty = value.length !== initialValue.length;
+      const currentValue = valueRef.current;
+      const isArrayLenDirty = currentValue.length !== initialValue.length;
       const keepValue = keepDirtyValues && isArrayLenDirty;
       if (!keepValue) {
         setErrors(NO_FIELD_ERRORS);
@@ -468,71 +484,90 @@ export const useFieldArray = <T>({
       if (keepValue) {
         // To keep the current length we might need to shorten or extend the
         // new value.
-        if (value.length > nextValue.length) {
+        if (currentValue.length > nextValue.length) {
           // `undefined` here will cause the child to be reset to its internally
           // stored initial value (e.g. the one passed to `append`)
           nextValue = nextValue.concat(
-            new Array(value.length - nextValue.length).fill(undefined),
+            new Array(currentValue.length - nextValue.length).fill(undefined),
           );
-        } else if (value.length < nextValue.length) {
-          nextValue = nextValue.slice(0, value.length);
+        } else if (currentValue.length < nextValue.length) {
+          nextValue = nextValue.slice(0, currentValue.length);
         }
       }
 
-      // TODO(tibbe): what do we do with the dirty bits and errors here? We will
-      // have incoming calls to `onChangeItem` once this function returns and
-      // they will pick up stale values from these. For example, if we get a
-      // call to update item 0 we will also communicate an empty set of errors
-      // for item 1 even if it was dirty and thus kept its errors.
-      setDirtyBits(BooleanArray.fromLength(nextValue.length));
-      setFieldErrors(ErrorArray.fromLength(nextValue.length));
+      const clearedDirtyBits = BooleanArray.fromLength(nextValue.length);
+      const clearedFieldErrors = ErrorArray.fromLength(nextValue.length);
+      dirtyBitsRef.current = clearedDirtyBits;
+      fieldErrorsRef.current = clearedFieldErrors;
+      setDirtyBits(clearedDirtyBits);
+      setFieldErrors(clearedFieldErrors);
       if (nextValue.length < childRefs.current.length) {
         childRefs.current = childRefs.current.slice(0, nextValue.length);
       } else if (nextValue.length > childRefs.current.length) {
         childRefs.current = [
           ...childRefs.current,
-          ...new Array(nextValue.length - value.length).fill(null),
+          ...new Array(nextValue.length - currentValue.length).fill(null),
         ];
       }
 
-      return childRefs.current.map(
+      const updatedValue = childRefs.current.map(
         (childRef, index) =>
           childRef?.reset(newValue && nextValue[index], options) ??
           nextValue[index],
         options,
       );
+      valueRef.current = updatedValue;
+      return updatedValue;
     },
-    [initialValue, value],
+    [initialValue],
   );
 
   const setValueMethod: FieldRefSetValue<T[]> = React.useCallback(
     (newValue: T[], options) => {
+      const currentValue = valueRef.current;
+      const currentDirtyBits = dirtyBitsRef.current;
+      const currentFieldErrors = fieldErrorsRef.current;
+
       // Optimization: don't do anything if nothing changed.
-      if (newValue === value) {
+      if (newValue === currentValue) {
         return;
       }
 
-      if (newValue.length > value.length) {
-        const numToAdd = newValue.length - value.length;
+      let newDirtyBits = currentDirtyBits;
+      let newFieldErrors = currentFieldErrors;
+
+      if (newValue.length > currentValue.length) {
+        const numToAdd = newValue.length - currentValue.length;
         childRefs.current = [
           ...childRefs.current,
           ...new Array(numToAdd).fill(null),
         ];
-        setDirtyBits(dirtyBits.concat(BooleanArray.fromLength(numToAdd)));
-        setFieldErrors(fieldErrors.concat(ErrorArray.fromLength(numToAdd)));
-      } else if (newValue.length < value.length) {
+        newDirtyBits = currentDirtyBits.concat(
+          BooleanArray.fromLength(numToAdd),
+        );
+        newFieldErrors = currentFieldErrors.concat(
+          ErrorArray.fromLength(numToAdd),
+        );
+      } else if (newValue.length < currentValue.length) {
         childRefs.current = childRefs.current.slice(0, newValue.length);
-        setDirtyBits(dirtyBits.slice(0, newValue.length));
-        setFieldErrors(fieldErrors.slice(0, newValue.length));
+        newDirtyBits = currentDirtyBits.slice(0, newValue.length);
+        newFieldErrors = currentFieldErrors.slice(0, newValue.length);
       }
 
+      valueRef.current = newValue;
+      dirtyBitsRef.current = newDirtyBits;
+      fieldErrorsRef.current = newFieldErrors;
+      setDirtyBits(newDirtyBits);
+      setFieldErrors(newFieldErrors);
+
       const newErrors = validateAndSetErrors(newValue);
-      const allErrors = unionSets([newErrors, fieldErrors.allErrors]);
+      const allErrors = unionSets([newErrors, newFieldErrors.allErrors]);
 
       // We can't rely on future calls to `onChangeItem` to propagate the change
       // as if we e.g. remove all rows we won't get any calls.
       onChange(newValue, {
-        isDirty,
+        isDirty:
+          newValue.length !== initialValue.length || newDirtyBits.isAnyTrue,
         errors: allErrors,
       });
 
@@ -543,18 +578,18 @@ export const useFieldArray = <T>({
         childRefs.current[i]?.setValue(newValue[i], options);
       }
     },
-    [dirtyBits, fieldErrors, isDirty, onChange, validateAndSetErrors, value],
+    [initialValue.length, onChange, validateAndSetErrors],
   );
 
   const validateMethod = React.useCallback(() => {
-    const newErrors = validateAndSetErrors(value);
+    const newErrors = validateAndSetErrors(valueRef.current);
     return unionSets([
       newErrors,
       ...childRefs.current.map(
         childRef => childRef?.validate() ?? NO_FIELD_ERRORS,
       ),
     ]);
-  }, [validateAndSetErrors, value]);
+  }, [validateAndSetErrors]);
 
   React.useImperativeHandle(
     ref,
@@ -564,9 +599,15 @@ export const useFieldArray = <T>({
 
   const append = React.useCallback(
     (initialItemValue: T) => {
-      const newValue = [...value, initialItemValue];
-      const newDirtyBits = dirtyBits.push(false);
-      const newFieldErrors = fieldErrors.push(NO_FIELD_ERRORS);
+      const currentValue = valueRef.current;
+      const currentDirtyBits = dirtyBitsRef.current;
+      const currentFieldErrors = fieldErrorsRef.current;
+      const newValue = [...currentValue, initialItemValue];
+      const newDirtyBits = currentDirtyBits.push(false);
+      const newFieldErrors = currentFieldErrors.push(NO_FIELD_ERRORS);
+      valueRef.current = newValue;
+      dirtyBitsRef.current = newDirtyBits;
+      fieldErrorsRef.current = newFieldErrors;
       setDirtyBits(newDirtyBits);
       setFieldErrors(newFieldErrors);
       childRefs.current = [...childRefs.current, null];
@@ -579,25 +620,25 @@ export const useFieldArray = <T>({
         errors: allErrors,
       });
     },
-    [
-      dirtyBits,
-      fieldErrors,
-      initialValue.length,
-      onChange,
-      validateAndSetErrors,
-      value,
-    ],
+    [initialValue.length, onChange, validateAndSetErrors],
   );
 
   const remove = React.useCallback(
     (index: number) => {
+      const currentValue = valueRef.current;
+
       // Optimization: don't do anything if the index is out of bounds.
-      if (index < 0 || index >= value.length) {
+      if (index < 0 || index >= currentValue.length) {
         return;
       }
-      const newValue = value.filter((_, i) => i !== index);
-      const newDirtyBits = dirtyBits.remove(index);
-      const newFieldErrors = fieldErrors.remove(index);
+      const currentDirtyBits = dirtyBitsRef.current;
+      const currentFieldErrors = fieldErrorsRef.current;
+      const newValue = currentValue.filter((_, i) => i !== index);
+      const newDirtyBits = currentDirtyBits.remove(index);
+      const newFieldErrors = currentFieldErrors.remove(index);
+      valueRef.current = newValue;
+      dirtyBitsRef.current = newDirtyBits;
+      fieldErrorsRef.current = newFieldErrors;
       setDirtyBits(newDirtyBits);
       setFieldErrors(newFieldErrors);
       childRefs.current = childRefs.current.filter((_, i) => i !== index);
@@ -610,14 +651,7 @@ export const useFieldArray = <T>({
         errors: allErrors,
       });
     },
-    [
-      dirtyBits,
-      fieldErrors,
-      initialValue.length,
-      onChange,
-      validateAndSetErrors,
-      value,
-    ],
+    [initialValue.length, onChange, validateAndSetErrors],
   );
 
   return React.useMemo(

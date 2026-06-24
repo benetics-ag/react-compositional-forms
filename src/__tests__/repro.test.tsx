@@ -98,6 +98,46 @@ describe('repros', () => {
     ).toBeTruthy();
   });
 
+  it('preserves both sibling array child onChange updates in the same tick', async () => {
+    const Form = () => {
+      const {control, value} = useForm({
+        initialValue: {rows: ['', '']},
+      });
+
+      const {fields: recordFields} = useFieldObject({control});
+      const {fields} = useFieldArray({
+        control: recordFields.rows.control,
+      });
+
+      return (
+        <div>
+          <button
+            onClick={() => {
+              fields[0].control.onChange('Ada', {
+                isDirty: true,
+                errors: NO_FIELD_ERRORS,
+              });
+              fields[1].control.onChange('Lovelace', {
+                isDirty: true,
+                errors: NO_FIELD_ERRORS,
+              });
+            }}
+            title="array child sibling updates"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(
+      screen.getByRole('button', {name: 'array child sibling updates'}),
+    );
+
+    expect(screen.getByText('Form: {"rows":["Ada","Lovelace"]}')).toBeTruthy();
+  });
+
   // TODO(tibbe): Figure out if we can express this as a property in the regular
   // use-field-array.test.tsx file.
   it('onChangeItem propagates dirty state and errors', async () => {
