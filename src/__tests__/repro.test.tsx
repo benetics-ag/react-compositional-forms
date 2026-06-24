@@ -4,7 +4,7 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {useFieldArray, useForm, useFieldObject} from '..';
+import {NO_FIELD_ERRORS, useFieldArray, useForm, useFieldObject} from '..';
 import TextField from '../test-helpers/TextField';
 
 jest.useFakeTimers();
@@ -51,6 +51,48 @@ describe('repros', () => {
 
     expect(screen.getByTestId('input-first')).toHaveValue('Ada');
     expect(screen.getByTestId('input-last')).toHaveValue('Lovelace');
+    expect(
+      screen.getByText('Form: {"name":{"first":"Ada","last":"Lovelace"}}'),
+    ).toBeTruthy();
+  });
+
+  it('preserves both sibling child onChange updates in the same tick', async () => {
+    const Form = () => {
+      const {control, value} = useForm({
+        initialValue: {name: {first: '', last: ''}},
+      });
+
+      const {fields} = useFieldObject({control});
+      const {fields: nameFields} = useFieldObject({
+        control: fields.name.control,
+      });
+
+      return (
+        <div>
+          <button
+            onClick={() => {
+              nameFields.first.control.onChange('Ada', {
+                isDirty: true,
+                errors: NO_FIELD_ERRORS,
+              });
+              nameFields.last.control.onChange('Lovelace', {
+                isDirty: true,
+                errors: NO_FIELD_ERRORS,
+              });
+            }}
+            title="child sibling updates"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(
+      screen.getByRole('button', {name: 'child sibling updates'}),
+    );
+
     expect(
       screen.getByText('Form: {"name":{"first":"Ada","last":"Lovelace"}}'),
     ).toBeTruthy();

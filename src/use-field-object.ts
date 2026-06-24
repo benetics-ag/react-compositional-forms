@@ -156,6 +156,12 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   const [fieldErrors, setFieldErrors] = React.useState<ErrorMap<string>>(() =>
     ErrorMap.create(),
   );
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+  const dirtyBitsRef = React.useRef(dirtyBits);
+  dirtyBitsRef.current = dirtyBits;
+  const fieldErrorsRef = React.useRef(fieldErrors);
+  fieldErrorsRef.current = fieldErrors;
 
   // Dirty state:
   const isDirty = React.useMemo(
@@ -189,18 +195,25 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   ) => void;
   const onChangeItem: OnChangeItem = useEventCallback(
     (newItemValue, {isDirty, errors: newErrors}, key) => {
+      const currentValue = valueRef.current;
+      const currentDirtyBits = dirtyBitsRef.current;
+      const currentFieldErrors = fieldErrorsRef.current;
+
       // Optimization: don't do anything if nothing changed.
-      const errors = fieldErrors.get(key);
+      const errors = currentFieldErrors.get(key);
       if (
-        newItemValue === value[key] &&
-        isDirty === dirtyBits.get(key) &&
+        newItemValue === currentValue[key] &&
+        isDirty === currentDirtyBits.get(key) &&
         (newErrors === errors || (newErrors.size === 0 && errors.size === 0))
       ) {
         return;
       }
-      const newValue = {...value, [key]: newItemValue};
-      const newDirtyBits = dirtyBits.set(key, isDirty);
-      const newFieldErrors = fieldErrors.set(key, newErrors);
+      const newValue = {...currentValue, [key]: newItemValue};
+      const newDirtyBits = currentDirtyBits.set(key, isDirty);
+      const newFieldErrors = currentFieldErrors.set(key, newErrors);
+      valueRef.current = newValue;
+      dirtyBitsRef.current = newDirtyBits;
+      fieldErrorsRef.current = newFieldErrors;
       setDirtyBits(newDirtyBits);
       setFieldErrors(newFieldErrors);
       onChange(newValue, {
@@ -237,11 +250,13 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
 
   const reset = React.useCallback(
     (newValue?: O, options?: ResetOptions): O => {
-      // TODO(tibbe): what do we do with the dirty bits and errors here? We will
-      // have incoming calls to `onChangeItem` once this function returns and
-      // they will pick up stale values from these.
-      setDirtyBits(BooleanMap.create());
-      setFieldErrors(ErrorMap.create());
+      // Dirty bits are indexed by field name; we narrow `keyof O` to strings.
+      const clearedDirtyBits = BooleanMap.create<keyof O & string>();
+      const clearedFieldErrors = ErrorMap.create<string>();
+      dirtyBitsRef.current = clearedDirtyBits;
+      fieldErrorsRef.current = clearedFieldErrors;
+      setDirtyBits(clearedDirtyBits);
+      setFieldErrors(clearedFieldErrors);
       const nextValue = newValue ?? initialValue;
 
       // Keys might have been added or removed from the object. Keep existing
@@ -263,6 +278,7 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
             nextValue[key as keyof O],
         ]),
       );
+      valueRef.current = updatedValue as O;
       return updatedValue as O;
     },
     [initialValue],
@@ -270,16 +286,20 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
 
   const setValue: FieldRefSetValue<{[P in keyof O]: O[P]}> = React.useCallback(
     (newValue: O, options) => {
+      const currentValue = valueRef.current;
+
       // Optimization: don't do anything if nothing changed.
-      if (newValue === value) {
+      if (newValue === currentValue) {
         return;
       }
+
+      valueRef.current = newValue;
 
       Object.entries(childRefs.current).forEach(([key, childRef]) => {
         // Optimization: don't do anything if nothing changed.
         const typedKey = key as keyof O;
         const newPropValue = newValue[typedKey];
-        if (newPropValue === value[typedKey]) {
+        if (newPropValue === currentValue[typedKey]) {
           return;
         }
 
@@ -288,7 +308,7 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
         childRef?.setValue(newPropValue, options);
       });
     },
-    [value],
+    [],
   );
 
   const validateMethod = React.useCallback(
