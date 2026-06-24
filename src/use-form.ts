@@ -200,7 +200,7 @@ export const useForm = <T>({
         }
         const allErrors = ref.current?.validate() ?? NO_FIELD_ERRORS;
         if (allErrors.size === 0) {
-          await onValid(value, e);
+          await onValid(valueRef.current, e);
           setIsSubmitSuccessful(true);
         } else if (onInvalid) {
           await onInvalid(allErrors, e);
@@ -210,7 +210,7 @@ export const useForm = <T>({
         setIsSubmitted(true);
       }
     },
-    [value],
+    [],
   );
 
   const reset = useEventCallback((newValue?: T, options?: ResetOptions) => {

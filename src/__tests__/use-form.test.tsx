@@ -63,3 +63,36 @@ describe('useForm', () => {
     });
   });
 });
+
+describe('handleSubmit', () => {
+  it('submits the latest value when setValue and submit happen in the same tick', async () => {
+    let submittedValue: {name: string} | undefined;
+
+    const Form = () => {
+      const {handleSubmit, setValue, value} = useForm({
+        initialValue: {name: ''},
+      });
+
+      return (
+        <div>
+          <button
+            onClick={() => {
+              setValue({name: 'Ada'});
+              void handleSubmit(data => {
+                submittedValue = data;
+              })();
+            }}
+            title="set and submit"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(screen.getByRole('button', {name: 'set and submit'}));
+
+    expect(submittedValue).toEqual({name: 'Ada'});
+  });
+});
