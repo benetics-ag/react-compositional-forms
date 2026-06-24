@@ -646,6 +646,24 @@ describe('FieldArray', () => {
 
       expect(screen.getByText('Form dirty')).toBeTruthy();
     });
+
+    it('keeps retained dirty row errors after updating a sibling row', async () => {
+      // Start with two valid rows.
+      render(<ArrayTest initialValue={['1', '2']} />);
+
+      // Clear row 0 -> row 0 is now dirty and invalid.
+      await user.clear(screen.getByTestId('input-0'));
+
+      // Row 0 dirty bit should be retained even after reset non-dirty.
+      await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
+
+      // Update row 1 -> row 0 dirty bit should still be retained.
+      await user.type(screen.getByTestId('input-1'), '3');
+
+      expect(screen.getByText('Field 0 errors: Required')).toBeTruthy();
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
+    });
   });
 
   describe('validate', () => {

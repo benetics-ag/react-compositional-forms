@@ -290,6 +290,24 @@ describe('FieldObject', () => {
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Form errors: Required')).toBeTruthy();
     });
+
+    it('keeps retained dirty child errors after updating a sibling', async () => {
+      // Start with two valid objects.
+      render(<ObjectTest initialValue={{a: '1', b: '2'}} />);
+
+      // Clear object 0 -> object 0 is now dirty and invalid.
+      await user.clear(screen.getByTestId('input-a'));
+
+      // Object 0 dirty bit should be retained even after reset non-dirty.
+      await user.click(screen.getByRole('button', {name: 'reset non-dirty'}));
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
+
+      // Update object 1 -> object 0 dirty bit should still be retained.
+      await user.type(screen.getByTestId('input-b'), '3');
+
+      expect(screen.getByText('Field a errors: Required')).toBeTruthy();
+      expect(screen.getByText('Form errors: Required')).toBeTruthy();
+    });
   });
 
   describe('validate', () => {
