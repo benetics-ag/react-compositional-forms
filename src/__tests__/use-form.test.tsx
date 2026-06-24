@@ -29,4 +29,37 @@ describe('useForm', () => {
       expect(screen.getByText('Form: "reset"')).toBeTruthy();
     });
   });
+
+  describe('setValue', () => {
+    it('keeps earlier sibling writes from consecutive functional updates', async () => {
+      const Form = () => {
+        const {setValue, value} = useForm({
+          initialValue: {firstName: '', lastName: ''},
+        });
+
+        return (
+          <div>
+            <button
+              onClick={() => {
+                setValue(prev => ({...prev, firstName: 'Ada'}));
+                setValue(prev => ({...prev, lastName: 'Lovelace'}));
+              }}
+              title="set sibling values"
+            />
+            <p>Form: {JSON.stringify(value)}</p>
+          </div>
+        );
+      };
+
+      render(<Form />);
+
+      await user.click(
+        screen.getByRole('button', {name: 'set sibling values'}),
+      );
+
+      expect(
+        screen.getByText('Form: {"firstName":"Ada","lastName":"Lovelace"}'),
+      ).toBeTruthy();
+    });
+  });
 });

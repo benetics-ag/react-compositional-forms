@@ -12,7 +12,51 @@ const user = userEvent.setup({advanceTimers: jest.advanceTimersByTime});
 
 /** This test contains repros for bugs that have appeared in the wild. */
 describe('repros', () => {
-  // TODO(tibbe): Figure out if we can express this as a property in the regulat
+  it('consecutive sibling setValue updates applied together on the next rerender', async () => {
+    const Form = () => {
+      const {control, setValue, value} = useForm({
+        initialValue: {name: {first: '', last: ''}},
+      });
+
+      const {fields} = useFieldObject({control});
+      const {fields: nameFields} = useFieldObject({
+        control: fields.name.control,
+      });
+
+      return (
+        <div>
+          <TextField name="first" parentControl={nameFields.first.control} />
+          <TextField name="last" parentControl={nameFields.last.control} />
+          <button
+            onClick={() => {
+              setValue(prev => ({
+                ...prev,
+                name: {...prev.name, first: 'Ada'},
+              }));
+              setValue(prev => ({
+                ...prev,
+                name: {...prev.name, last: 'Lovelace'},
+              }));
+            }}
+            title="set full name"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(screen.getByRole('button', {name: 'set full name'}));
+
+    expect(screen.getByTestId('input-first')).toHaveValue('Ada');
+    expect(screen.getByTestId('input-last')).toHaveValue('Lovelace');
+    expect(
+      screen.getByText('Form: {"name":{"first":"Ada","last":"Lovelace"}}'),
+    ).toBeTruthy();
+  });
+
+  // TODO(tibbe): Figure out if we can express this as a property in the regular
   // use-field-array.test.tsx file.
   it('onChangeItem propagates dirty state and errors', async () => {
     const Form = () => {

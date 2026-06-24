@@ -136,6 +136,8 @@ export const useForm = <T>({
   mode = 'onChange',
 }: UseFormProps<T>): UseFormReturn<T> => {
   const [value, setValue] = React.useState(initialInitialValue);
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
   const [isDirty, setIsDirty] = React.useState(false);
   const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -148,6 +150,7 @@ export const useForm = <T>({
   type OnChange = (newValue: T, newFieldState: InternalFieldState) => void;
   const onChange: OnChange = React.useCallback(
     (newValue, {isDirty: newIsDirty, errors: newErrors}) => {
+      valueRef.current = newValue;
       setValue(newValue);
       setIsDirty(newIsDirty);
       setErrors(newErrors);
@@ -169,20 +172,22 @@ export const useForm = <T>({
 
   const setValueMethod: UseFormSetValue<T> = React.useCallback(
     (newValueOrFn, options) => {
+      const prevValue = valueRef.current;
       const newValue =
         typeof newValueOrFn === 'function'
-          ? (newValueOrFn as (prevValue: T) => T)(value)
+          ? (newValueOrFn as (prevValue: T) => T)(prevValue)
           : newValueOrFn;
       // Workaround: we might see multiple calls to `setValue` before the child
       // responds with `onChange` in case the leaf `Field` hasn't been created
       // yet. We need to update the value immediately.
+      valueRef.current = newValue;
       setValue(newValue);
       ref.current?.setValue(newValue, options);
     },
-    [value],
+    [],
   );
 
-  const getValues = React.useCallback(() => value, [value]);
+  const getValues = React.useCallback(() => valueRef.current, []);
 
   const handleSubmit: UseFormHandleSubmit<T> = React.useCallback(
     (onValid, onInvalid) => async (e?: React.BaseSyntheticEvent) => {
@@ -217,6 +222,7 @@ export const useForm = <T>({
     const updatedValue =
       ref.current?.reset(newValue, options) ??
       (newValue !== undefined ? newValue : initialValue);
+    valueRef.current = updatedValue;
     setValue(updatedValue);
   });
 
