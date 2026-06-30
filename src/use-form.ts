@@ -1,22 +1,28 @@
 import React from 'react';
 
-import {
-  Control,
-  FieldRef,
-  InternalFieldState,
-  ResetOptions,
-  SetValueOptions,
-} from './control';
-import {FieldError, NO_FIELD_ERRORS} from './field-errors';
-import {useEventCallback} from './use-event-callback';
+import {FieldError} from './field-errors';
+import {Form, createRootForm} from './form';
+import {ValidationMode} from './internal/store';
+import {errorSetsEqual, useFormSlice} from './internal/use-store-slice';
 
-// -----------------------------------------------------------------------------
-// useForm
+export type SetValueOptions = {
+  /**
+   * Which event to mimic. `onChange` validates the written subtree; `onBlur`
+   * and `set` write the value without validating.
+   *
+   * @default 'onChange'
+   */
+  mode?: 'onChange' | 'onBlur' | 'set';
+};
+
+export type ResetOptions = {
+  /** Keep dirty fields' value and errors; only clean fields take the reset value. */
+  keepDirtyValues?: boolean;
+};
 
 export type UseFormProps<T> = {
   /** The initial value of the form. */
   initialValue: T;
-
   /**
    * Validation strategy.
    *
@@ -25,7 +31,7 @@ export type UseFormProps<T> = {
    *
    * @default "onChange"
    */
-  mode?: 'onBlur' | 'onChange';
+  mode?: ValidationMode;
 };
 
 export type FormState = {
@@ -34,7 +40,7 @@ export type FormState = {
    *
    * Empty if the form is valid.
    */
-  errors: Set<FieldError>;
+  errors: ReadonlySet<FieldError>;
 
   /** True if any field is dirty, otherwise false. */
   isDirty: boolean;
@@ -71,7 +77,7 @@ export type SubmitHandler<T> = (
 
 export type SubmitErrorHandler = (
   /** Non-empty set of validation errors. */
-  errors: Set<FieldError>,
+  errors: ReadonlySet<FieldError>,
   event?: React.BaseSyntheticEvent,
 ) => void | Promise<void>;
 
@@ -96,7 +102,7 @@ export type UseFormSetValue<T> = (
 
 export type UseFormReturn<T> = {
   /** Passed to a field to connect it to the form. */
-  control: Control<T>;
+  control: Form<T>;
 
   /** The current state of the form. */
   formState: FormState;
@@ -118,8 +124,14 @@ export type UseFormReturn<T> = {
    */
   handleSubmit: UseFormHandleSubmit<T>;
 
-  /** Reset the form to its initial value. */
-  reset: (value?: T, options?: ResetOptions) => void;
+  /**
+   * Reset the form to `value` — any value, including `undefined` — making it the
+   * new initial value and clearing the form's errors.
+   */
+  reset: (value: T, options?: ResetOptions) => void;
+
+  /** Reset the form to its current initial value, clearing the form's errors. */
+  resetToInitial: (options?: ResetOptions) => void;
 
   /** Set the value of the form. */
   setValue: UseFormSetValue<T>;
@@ -132,108 +144,110 @@ export type UseFormReturn<T> = {
 };
 
 export const useForm = <T>({
-  initialValue: initialInitialValue,
+  initialValue,
   mode = 'onChange',
 }: UseFormProps<T>): UseFormReturn<T> => {
-  const [value, setValue] = React.useState(initialInitialValue);
-  const [isDirty, setIsDirty] = React.useState(false);
-  const [errors, setErrors] = React.useState(NO_FIELD_ERRORS);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [isSubmitted, setIsSubmitted] = React.useState(false);
-  const [isSubmitSuccessful, setIsSubmitSuccessful] = React.useState(false);
-  const isValid = React.useMemo(() => errors.size === 0, [errors]);
-  // On `reset` we might change the initial value and thus we need a local copy.
-  const [initialValue, setInitialValue] = React.useState(initialInitialValue);
+  // The root form is created once, so it is stable for the form's lifetime.
+  // Typing the ref non-null (asserted via `null!`) lets the callbacks below read
+  // it without a per-use `!` and keep honestly empty dependency arrays, giving
+  // those handlers a stable identity across renders.
+  const rootRef = React.useRef<ReturnType<typeof createRootForm<T>>>(null!);
+  if (!rootRef.current) {
+    rootRef.current = createRootForm<T>(initialValue, mode);
+  }
+  const control = rootRef.current;
 
-  type OnChange = (newValue: T, newFieldState: InternalFieldState) => void;
-  const onChange: OnChange = React.useCallback(
-    (newValue, {isDirty: newIsDirty, errors: newErrors}) => {
-      setValue(newValue);
-      setIsDirty(newIsDirty);
-      setErrors(newErrors);
+  const [submit, setSubmit] = React.useState({
+    isSubmitted: false,
+    isSubmitting: false,
+    isSubmitSuccessful: false,
+  });
+
+  const value = useFormSlice(control, () => control.value, Object.is);
+  const aggregate = useFormSlice(
+    control,
+    () => ({isDirty: control.isDirty, errors: control.errors}),
+    (a, b) => a.isDirty === b.isDirty && errorSetsEqual(a.errors, b.errors),
+  );
+
+  const formState = React.useMemo<FormState>(
+    () => ({
+      errors: aggregate.errors,
+      isDirty: aggregate.isDirty,
+      isValid: aggregate.errors.size === 0,
+      ...submit,
+    }),
+    [aggregate.errors, aggregate.isDirty, submit],
+  );
+
+  // The handlers read `rootRef.current` directly — the root form is stable — so
+  // each closes over only the ref, keeping an empty dependency array and a
+  // stable identity.
+  const setValue = React.useCallback<UseFormSetValue<T>>(
+    (newValueOrFn, options) => {
+      const root = rootRef.current;
+      const writeMode = options?.mode ?? 'onChange';
+      const scope =
+        writeMode === 'set' || writeMode === 'onBlur' ? 'none' : 'subtree';
+      const next =
+        typeof newValueOrFn === 'function'
+          ? (newValueOrFn as (p: T) => T)(root.value)
+          : newValueOrFn;
+      root.setValue(next, scope);
     },
     [],
   );
 
-  const ref = React.useRef<FieldRef<T> | null>(null);
-  const control = React.useMemo(
-    () => ({
-      onChange,
-      ref,
-      initialValue,
-      value,
-      validationMode: mode,
-    }),
-    [onChange, initialValue, value, mode],
-  );
+  const getValues = React.useCallback(() => rootRef.current.value, []);
 
-  const setValueMethod: UseFormSetValue<T> = React.useCallback(
-    (newValueOrFn, options) => {
-      const newValue =
-        typeof newValueOrFn === 'function'
-          ? (newValueOrFn as (prevValue: T) => T)(value)
-          : newValueOrFn;
-      // Workaround: we might see multiple calls to `setValue` before the child
-      // responds with `onChange` in case the leaf `Field` hasn't been created
-      // yet. We need to update the value immediately.
-      setValue(newValue);
-      ref.current?.setValue(newValue, options);
-    },
-    [value],
-  );
+  const reset = React.useCallback((value: T, options?: ResetOptions) => {
+    setSubmit({
+      isSubmitted: false,
+      isSubmitting: false,
+      isSubmitSuccessful: false,
+    });
+    rootRef.current.reset(value, options?.keepDirtyValues ?? false);
+  }, []);
 
-  const getValues = React.useCallback(() => value, [value]);
+  const resetToInitial = React.useCallback((options?: ResetOptions) => {
+    setSubmit({
+      isSubmitted: false,
+      isSubmitting: false,
+      isSubmitSuccessful: false,
+    });
+    rootRef.current.resetToInitial(options?.keepDirtyValues ?? false);
+  }, []);
 
-  const handleSubmit: UseFormHandleSubmit<T> = React.useCallback(
-    (onValid, onInvalid) => async (e?: React.BaseSyntheticEvent) => {
-      setIsSubmitting(true);
-      setIsSubmitSuccessful(false);
-      try {
-        if (e) {
-          e.preventDefault?.();
-          e.persist?.();
+  const handleSubmit = React.useCallback(
+    (onValid: SubmitHandler<T>, onInvalid?: SubmitErrorHandler) =>
+      async (e?: React.BaseSyntheticEvent) => {
+        const root = rootRef.current;
+        setSubmit(s => ({...s, isSubmitting: true, isSubmitSuccessful: false}));
+        let ok = false;
+        try {
+          e?.preventDefault?.();
+          e?.persist?.();
+          const errors = root.validate();
+          if (errors.size === 0) {
+            await onValid(root.value, e);
+            ok = true;
+          } else if (onInvalid) {
+            await onInvalid(errors, e);
+          }
+        } finally {
+          setSubmit(s => ({
+            ...s,
+            isSubmitting: false,
+            isSubmitted: true,
+            isSubmitSuccessful: ok,
+          }));
         }
-        const allErrors = ref.current?.validate() ?? NO_FIELD_ERRORS;
-        if (allErrors.size === 0) {
-          await onValid(value, e);
-          setIsSubmitSuccessful(true);
-        } else if (onInvalid) {
-          await onInvalid(allErrors, e);
-        }
-      } finally {
-        setIsSubmitting(false);
-        setIsSubmitted(true);
-      }
-    },
-    [value],
-  );
-
-  const reset = useEventCallback((newValue?: T, options?: ResetOptions) => {
-    setIsSubmitted(false);
-    setIsSubmitSuccessful(false);
-    if (newValue !== undefined) {
-      setInitialValue(newValue);
-    }
-    const updatedValue =
-      ref.current?.reset(newValue, options) ??
-      (newValue !== undefined ? newValue : initialValue);
-    setValue(updatedValue);
-  });
-
-  const formState = React.useMemo(
-    () => ({
-      errors,
-      isDirty,
-      isSubmitted,
-      isSubmitSuccessful,
-      isSubmitting,
-      isValid,
-    }),
-    [errors, isDirty, isSubmitSuccessful, isSubmitted, isSubmitting, isValid],
+      },
+    [],
   );
 
   const trigger = React.useCallback(() => {
-    ref.current?.validate();
+    rootRef.current.validate();
   }, []);
 
   return React.useMemo(
@@ -243,7 +257,8 @@ export const useForm = <T>({
       getValues,
       handleSubmit,
       reset,
-      setValue: setValueMethod,
+      resetToInitial,
+      setValue,
       trigger,
       value,
     }),
@@ -253,7 +268,8 @@ export const useForm = <T>({
       getValues,
       handleSubmit,
       reset,
-      setValueMethod,
+      resetToInitial,
+      setValue,
       trigger,
       value,
     ],

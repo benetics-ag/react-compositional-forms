@@ -25,8 +25,8 @@ function fieldErrorDeepEqual(errorA: FieldError, errorB: FieldError): boolean {
 }
 
 export function fieldErrorSetsDeepEqual(
-  setA: Set<FieldError>,
-  setB: Set<FieldError>,
+  setA: ReadonlySet<FieldError>,
+  setB: ReadonlySet<FieldError>,
 ): boolean {
   if (setA === setB) {
     return true;
