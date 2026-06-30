@@ -4,7 +4,7 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {useFieldArray, useForm, useFieldObject} from '..';
+import {useFieldArray, useFieldObject, useForm} from '..';
 import TextField from '../test-helpers/TextField';
 
 jest.useFakeTimers();

@@ -3,7 +3,13 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {FieldError, NO_FIELD_ERRORS, useField, useForm} from '..';
+import {
+  FieldError,
+  NO_FIELD_ERRORS,
+  useField,
+  useFieldObject,
+  useForm,
+} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
 
@@ -25,6 +31,7 @@ const FieldTest = ({
     formState: {errors: formErrors, isDirty: formIsDirty, isValid: formIsValid},
     handleSubmit,
     reset,
+    resetToInitial,
     setValue,
     value: formValue,
   } = useForm<string>({initialValue, mode});
@@ -56,9 +63,16 @@ const FieldTest = ({
         {isDirty ? <p>Dirty</p> : null}
         {errors.size > 0 ? <p>Errors: {stringifyErrors(errors)}</p> : null}
       </div>
-      <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
-        onClick={() => reset(undefined, {keepDirtyValues: true})}
+        onClick={() =>
+          resetNewInitialValue === undefined
+            ? resetToInitial()
+            : reset(resetNewInitialValue)
+        }
+        title="reset"
+      />
+      <button
+        onClick={() => resetToInitial({keepDirtyValues: true})}
         title="reset non-dirty"
       />
       <button onClick={() => reset('1')} title="reset with new default" />
@@ -177,7 +191,7 @@ describe('Field', () => {
 
     it('reuses state if unchanged', async () => {
       let numCalls = 0;
-      let prevErrors: Set<FieldError> | undefined;
+      let prevErrors: ReadonlySet<FieldError> | undefined;
       render(
         <FieldTest
           onFormStateChange={formState => {
@@ -358,5 +372,124 @@ describe('Field', () => {
 
       expect(screen.queryByText('Form submit successful')).toBeNull();
     });
+  });
+
+  it('preserves both sibling leaf onChange updates in the same tick', async () => {
+    // Two sibling leaves' onChange called in one handler must both survive.
+    const Form = () => {
+      const {control, value} = useForm({
+        initialValue: {first: '', last: ''},
+      });
+      const {fields} = useFieldObject({control});
+      const first = useField({control: fields.first.control});
+      const last = useField({control: fields.last.control});
+
+      return (
+        <div>
+          <button
+            onClick={() => {
+              first.field.onChange('Ada');
+              last.field.onChange('Lovelace');
+            }}
+            title="set both"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(screen.getByRole('button', {name: 'set both'}));
+
+    expect(
+      screen.getByText('Form: {"first":"Ada","last":"Lovelace"}'),
+    ).toBeTruthy();
+  });
+
+  it('reports dirty after editing a field whose initial value is undefined', async () => {
+    // A leaf present in the initial structure with an `undefined` initial value
+    // (here the whole form) is not a grown collection element: editing it makes
+    // it dirty, like any other field.
+    const Comp = () => {
+      const {control} = useForm<string | undefined>({initialValue: undefined});
+      const {field, fieldState} = useField<string | undefined>({control});
+      return (
+        <div>
+          <input
+            data-testid="input"
+            value={field.value ?? ''}
+            onChange={e => field.onChange(e.target.value)}
+          />
+          <p>{fieldState.isDirty ? 'dirty' : 'clean'}</p>
+        </div>
+      );
+    };
+
+    render(<Comp />);
+
+    expect(screen.getByText('clean')).toBeTruthy();
+
+    await user.type(screen.getByTestId('input'), 'x');
+
+    expect(screen.getByText('dirty')).toBeTruthy();
+  });
+
+  it('treats a content-equal onChange as a no-op under a custom equalsFn', async () => {
+    // The no-op guard must use the field's own equality, not reference identity,
+    // so a fresh-but-equal value neither writes nor re-validates.
+    let validateCalls = 0;
+    const Comp = () => {
+      const {control} = useForm<{n: number}>({initialValue: {n: 1}});
+      const {field} = useField<{n: number}>({
+        control,
+        equalsFn: (a, b) => a.n === b.n,
+        validate: () => {
+          validateCalls++;
+          return NO_FIELD_ERRORS;
+        },
+      });
+      return (
+        <div>
+          <p>{`n=${field.value.n}`}</p>
+          <button title="same" onClick={() => field.onChange({n: 1})} />
+        </div>
+      );
+    };
+
+    render(<Comp />);
+
+    const before = validateCalls;
+    await user.click(screen.getByRole('button', {name: 'same'}));
+
+    expect(validateCalls).toBe(before);
+  });
+
+  it('reads the bound control after the control prop changes with no store edit', async () => {
+    // Swapping which control a field is bound to, without any intervening store
+    // mutation, must show the newly-bound position's value, not a cached slice.
+    const Comp = () => {
+      const {control} = useForm({initialValue: {a: 'av', b: 'bv'}});
+      const {fields} = useFieldObject({control});
+      const [which, setWhich] = React.useState<'a' | 'b'>('a');
+      const {field} = useField({control: fields[which].control});
+      return (
+        <div>
+          <p>value: {field.value}</p>
+          <button
+            title="toggle"
+            onClick={() => setWhich(w => (w === 'a' ? 'b' : 'a'))}
+          />
+        </div>
+      );
+    };
+
+    render(<Comp />);
+
+    expect(screen.getByText('value: av')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', {name: 'toggle'}));
+
+    expect(screen.getByText('value: bv')).toBeTruthy();
   });
 });
