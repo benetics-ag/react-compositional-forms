@@ -3,7 +3,13 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {NO_FIELD_ERRORS, useFieldArray, useForm} from '..';
+import {
+  Control,
+  NO_FIELD_ERRORS,
+  useFieldArray,
+  useFieldObject,
+  useForm,
+} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
 import TextField from '../test-helpers/TextField';
@@ -22,6 +28,7 @@ const ArrayTest = ({
     formState: {errors: formErrors, isDirty: formIsDirty, isValid: formIsValid},
     handleSubmit,
     reset,
+    resetToInitial,
     setValue,
     value: formValue,
   } = useForm<string[]>({initialValue});
@@ -54,9 +61,16 @@ const ArrayTest = ({
         </div>
       ))}
       <button onClick={() => append('')} title="add row" />
-      <button onClick={() => reset(resetNewInitialValue)} title="reset" />
       <button
-        onClick={() => reset(undefined, {keepDirtyValues: true})}
+        onClick={() =>
+          resetNewInitialValue === undefined
+            ? resetToInitial()
+            : reset(resetNewInitialValue)
+        }
+        title="reset"
+      />
+      <button
+        onClick={() => resetToInitial({keepDirtyValues: true})}
         title="reset non-dirty"
       />
       <button onClick={() => setValue(setValueValue)} title="set value" />
@@ -685,5 +699,104 @@ describe('FieldArray', () => {
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.getByText('Submit success')).toBeTruthy();
     });
+  });
+
+  it('skips validating array elements dropped by a same-tick shorter setValue', async () => {
+    // setValue('set') shrinks the array but leaves the dropped element's
+    // descriptor registered until the next render. Validating in the same tick
+    // must skip that element — whose value is now gone — rather than run its
+    // validator against `undefined`.
+    const Comp = () => {
+      const {control, setValue, trigger, formState} = useForm<string[]>({
+        initialValue: ['a', 'b'],
+      });
+      const {fields} = useFieldArray({control});
+      return (
+        <div>
+          {fields.map((field, i) => (
+            <TextField
+              key={i}
+              name={i.toString()}
+              parentControl={field.control}
+              validate={value => {
+                if (value === undefined) {
+                  throw new Error('validated a removed element');
+                }
+                return value.length > 0
+                  ? NO_FIELD_ERRORS
+                  : new Set([{message: 'Required'}]);
+              }}
+            />
+          ))}
+          <button
+            title="shrink and validate"
+            onClick={() => {
+              setValue(['a'], {mode: 'set'});
+              trigger();
+            }}
+          />
+          {formState.isValid ? <p>valid</p> : null}
+        </div>
+      );
+    };
+
+    render(<Comp />);
+
+    await user.click(screen.getByRole('button', {name: 'shrink and validate'}));
+
+    expect(screen.getByText('valid')).toBeTruthy();
+    expect(screen.queryByText('Field 0 errors: Required')).toBeNull();
+  });
+
+  it('an appended element that is itself a collection is born clean', async () => {
+    const Row = ({
+      name,
+      control,
+    }: {
+      name: string;
+      control: Control<string[]>;
+    }) => {
+      const {fields} = useFieldArray({control});
+      return (
+        <div>
+          {fields.map((field, i) => (
+            <TextField
+              key={i}
+              name={`${name}-${i}`}
+              parentControl={field.control}
+            />
+          ))}
+          <p>{`${name}: ${control.isDirty ? 'dirty' : 'clean'}`}</p>
+        </div>
+      );
+    };
+
+    const Form = () => {
+      const {control} = useForm<{rows: string[][]}>({
+        initialValue: {rows: [['a']]},
+      });
+      const {fields: record} = useFieldObject({control});
+      const {fields, append} = useFieldArray({control: record.rows.control});
+
+      return (
+        <div>
+          {fields.map((field, i) => (
+            <Row key={i} name={`row${i}`} control={field.control} />
+          ))}
+          <button onClick={() => append(['x'])} title="add row" />
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(screen.getByRole('button', {name: 'add row'}));
+    // Edit the first row, forcing a re-evaluation now that the appended row's
+    // descriptor is registered.
+    await user.type(screen.getByTestId('input-row0-0'), 'b');
+
+    // The appended row — itself an array — is clean until edited, even though the
+    // outer array is dirty because its length grew.
+    expect(screen.getByText('row1: clean')).toBeTruthy();
   });
 });
