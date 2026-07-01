@@ -3,13 +3,8 @@ import {render, screen} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import userEvent from '@testing-library/user-event';
 
-import {
-  FieldError,
-  NO_FIELD_ERRORS,
-  useField,
-  useFieldObject,
-  useForm,
-} from '..';
+import type {FieldErrors} from '../field-errors';
+import {NO_FIELD_ERRORS, useField, useFieldObject, useForm} from '..';
 import type {TestProps} from '../test-helpers/types';
 import {stringifyErrors} from '../test-helpers/stringify-errors';
 
@@ -191,7 +186,7 @@ describe('Field', () => {
 
     it('reuses state if unchanged', async () => {
       let numCalls = 0;
-      let prevErrors: ReadonlySet<FieldError> | undefined;
+      let prevErrors: FieldErrors | undefined;
       render(
         <FieldTest
           onFormStateChange={formState => {

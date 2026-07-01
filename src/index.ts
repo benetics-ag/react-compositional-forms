@@ -14,7 +14,11 @@
 //   to avoid unnecessary recomputation on every render.
 
 export {type Form as Control} from './form';
-export {type FieldError, NO_FIELD_ERRORS} from './field-errors';
+export {
+  type FieldError,
+  type FieldErrors,
+  NO_FIELD_ERRORS,
+} from './field-errors';
 export {type ValidationMode} from './internal/store';
 export {
   type UseFieldField as FieldControl,

@@ -10,7 +10,7 @@
  * {@link Form.internal}.
  */
 
-import {FieldError} from './field-errors';
+import type {FieldErrors} from './field-errors';
 import {childPath, keyOf, Path, ROOT, Segment} from './internal/path';
 import {FormDescriptor} from './internal/form-descriptor';
 import {FormStore, ValidateScope, ValidationMode} from './internal/store';
@@ -26,10 +26,10 @@ export interface Form<T> {
   readonly isDirty: boolean;
 
   /** The errors at and below this form. */
-  readonly errors: ReadonlySet<FieldError>;
+  readonly errors: FieldErrors;
 
   /** This form's own errors, excluding its descendants'. */
-  readonly ownErrors: ReadonlySet<FieldError>;
+  readonly ownErrors: FieldErrors;
 
   /** When this form's validators run. */
   readonly validationMode: ValidationMode;
@@ -59,7 +59,7 @@ export interface Form<T> {
   resetToInitial(keepDirtyValues: boolean): T;
 
   /** Validate this form's subtree now; returns the aggregate errors. */
-  validate(): ReadonlySet<FieldError>;
+  validate(): FieldErrors;
 
   /**
    * Only needed when extending the library with new form types: the surface a

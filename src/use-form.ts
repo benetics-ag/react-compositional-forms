@@ -1,6 +1,6 @@
 import React from 'react';
 
-import {FieldError} from './field-errors';
+import type {FieldErrors} from './field-errors';
 import {Form, createRootForm} from './form';
 import {ValidationMode} from './internal/store';
 import {errorSetsEqual, useFormSlice} from './internal/use-store-slice';
@@ -40,7 +40,7 @@ export type FormState = {
    *
    * Empty if the form is valid.
    */
-  errors: ReadonlySet<FieldError>;
+  errors: FieldErrors;
 
   /** True if any field is dirty, otherwise false. */
   isDirty: boolean;
@@ -77,7 +77,7 @@ export type SubmitHandler<T> = (
 
 export type SubmitErrorHandler = (
   /** Non-empty set of validation errors. */
-  errors: ReadonlySet<FieldError>,
+  errors: FieldErrors,
   event?: React.BaseSyntheticEvent,
 ) => void | Promise<void>;
 

@@ -9,7 +9,8 @@
 
 import React from 'react';
 
-import {FieldError, fieldErrorSetsDeepEqual} from '../field-errors';
+import type {FieldErrors} from '../field-errors';
+import {fieldErrorSetsDeepEqual} from '../field-errors';
 import {Form} from '../form';
 import {FormDescriptor} from './form-descriptor';
 import {Snapshot} from './store';
@@ -54,10 +55,7 @@ export function useFormSlice<T, S>(
 }
 
 /** Deep-equal comparison for error sets, for use as a slice `isEqual`. */
-export function errorSetsEqual(
-  a: ReadonlySet<FieldError>,
-  b: ReadonlySet<FieldError>,
-): boolean {
+export function errorSetsEqual(a: FieldErrors, b: FieldErrors): boolean {
   return fieldErrorSetsDeepEqual(a, b);
 }
 

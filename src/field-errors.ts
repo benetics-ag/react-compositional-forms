@@ -4,6 +4,9 @@ export type FieldError = {
   message?: string;
 };
 
+/** Public error collection type exposed by the library. */
+export type FieldErrors = ReadonlySet<FieldError>;
+
 /**
  * Stable value for an empty set of errors.
  *
@@ -25,8 +28,8 @@ function fieldErrorDeepEqual(errorA: FieldError, errorB: FieldError): boolean {
 }
 
 export function fieldErrorSetsDeepEqual(
-  setA: ReadonlySet<FieldError>,
-  setB: ReadonlySet<FieldError>,
+  setA: FieldErrors,
+  setB: FieldErrors,
 ): boolean {
   if (setA === setB) {
     return true;
