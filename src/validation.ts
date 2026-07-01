@@ -152,6 +152,8 @@ export const stringRules = ({
  * @param errors The set of errors.
  * @returns An arbitrary error from the set of errors, if any.
  */
-export function someError(errors: Set<FieldError>): FieldError | undefined {
+export function someError(
+  errors: ReadonlySet<FieldError>,
+): FieldError | undefined {
   return errors.values().next().value;
 }
