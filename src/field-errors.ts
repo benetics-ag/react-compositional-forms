@@ -15,7 +15,7 @@ export type FieldErrors = ReadonlySet<FieldError>;
  *
  * N.B. This set must not be mutated.
  */
-export const NO_FIELD_ERRORS: Set<FieldError> = new Set();
+export const NO_FIELD_ERRORS: FieldErrors = new Set();
 
 // -----------------------------------------------------------------------------
 // fieldErrorSetsDeepEqual

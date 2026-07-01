@@ -1,12 +1,12 @@
 import React from 'react';
 
-import {Control, FieldError, useField} from '..';
+import {Control, type FieldErrors, useField} from '..';
 import {stringifyErrors} from './stringify-errors';
 
 export type TextFieldProps = {
   name: string;
   parentControl: Control<string>;
-  validate?: (value: string) => Set<FieldError>;
+  validate?: (value: string) => FieldErrors;
 };
 
 const TextField = ({name, parentControl, validate}: TextFieldProps) => {

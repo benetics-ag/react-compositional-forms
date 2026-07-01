@@ -1,4 +1,4 @@
-import {FieldError} from './field-errors';
+import type {FieldErrors} from './field-errors';
 import {Form} from './form';
 import {Equals, FormDescriptor, Validator} from './internal/form-descriptor';
 import {
@@ -40,7 +40,7 @@ export type UseFieldFieldState = {
    *
    * If empty the field is valid.
    */
-  errors: ReadonlySet<FieldError>;
+  errors: FieldErrors;
 
   /**
    * Is the field dirty?
@@ -81,7 +81,7 @@ export type UseFieldProps<T> = {
    * @returns A set of errors. If the set is empty the value is considered
    * valid.
    */
-  validate?: (value: T) => Set<FieldError>;
+  validate?: (value: T) => FieldErrors;
 };
 
 /**
