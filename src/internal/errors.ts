@@ -9,6 +9,7 @@
  * unchanged validation result propagates no new reference to subscribers.
  */
 
+import type {FieldErrors} from '../field-errors';
 import {
   FieldError,
   fieldErrorSetsDeepEqual,
@@ -26,10 +27,10 @@ import {isDescendantOrSelf, Path, pathOf, PathKey} from './path';
  *   array-level error before an element's). {@link NO_FIELD_ERRORS} when empty.
  */
 export function aggregateErrors(
-  ownErrors: ReadonlyMap<PathKey, ReadonlySet<FieldError>>,
+  ownErrors: ReadonlyMap<PathKey, FieldErrors>,
   path: Path,
-): ReadonlySet<FieldError> {
-  const matches: {depth: number; errs: ReadonlySet<FieldError>}[] = [];
+): FieldErrors {
+  const matches: {depth: number; errs: FieldErrors}[] = [];
   for (const [key, errs] of ownErrors) {
     const kp = pathOf(key);
     if (isDescendantOrSelf(kp, path)) matches.push({depth: kp.length, errs});
@@ -52,10 +53,10 @@ export function aggregateErrors(
  * @returns The updated map, or `map` unchanged when nothing differs.
  */
 export function withEntry(
-  map: ReadonlyMap<PathKey, ReadonlySet<FieldError>>,
+  map: ReadonlyMap<PathKey, FieldErrors>,
   key: PathKey,
-  errs: ReadonlySet<FieldError>,
-): ReadonlyMap<PathKey, ReadonlySet<FieldError>> {
+  errs: FieldErrors,
+): ReadonlyMap<PathKey, FieldErrors> {
   const prev = map.get(key);
   if (prev === errs || (prev === undefined && errs.size === 0)) return map;
   if (prev !== undefined && fieldErrorSetsDeepEqual(prev, errs)) return map;
@@ -77,10 +78,10 @@ export function withEntry(
  * @returns The updated map, or `map` unchanged when nothing was dropped.
  */
 export function keepDirtyErrors(
-  map: ReadonlyMap<PathKey, ReadonlySet<FieldError>>,
+  map: ReadonlyMap<PathKey, FieldErrors>,
   path: Path,
   dirtyPrefixes: ReadonlySet<PathKey>,
-): ReadonlyMap<PathKey, ReadonlySet<FieldError>> {
+): ReadonlyMap<PathKey, FieldErrors> {
   let changed = false;
   const next = new Map(map);
   for (const key of map.keys()) {

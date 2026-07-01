@@ -13,6 +13,7 @@
  * register with it; its dirty and reset walks consult that registry.
  */
 
+import type {FieldErrors} from '../field-errors';
 import {FieldError, NO_FIELD_ERRORS} from '../field-errors';
 import {aggregateErrors, keepDirtyErrors, withEntry} from './errors';
 import {
@@ -66,7 +67,7 @@ export type Snapshot = {
   readonly initialValue: unknown;
 
   /** Each form's own (non-aggregated) validation errors, keyed by path. */
-  readonly ownErrors: ReadonlyMap<PathKey, ReadonlySet<FieldError>>;
+  readonly ownErrors: ReadonlyMap<PathKey, FieldErrors>;
 
   /**
    * Baselines for elements (leaf or composite) grown past the initial structure,
@@ -230,10 +231,10 @@ export class FormStore {
   // a child's value reaching its parent re-checks each rule that spans it (an
   // array's length rule, an object's cross-field rule).
   private validateUp(
-    ownErrors: ReadonlyMap<PathKey, ReadonlySet<FieldError>>,
+    ownErrors: ReadonlyMap<PathKey, FieldErrors>,
     path: Path,
     rootValue: unknown,
-  ): ReadonlyMap<PathKey, ReadonlySet<FieldError>> {
+  ): ReadonlyMap<PathKey, FieldErrors> {
     for (const pk of prefixesOf(path)) {
       const form = this.forms.get(keyOf(pk));
       if (form?.descriptor.validate) {
@@ -276,10 +277,10 @@ export class FormStore {
   // child it replaced. A descendant whose value is gone has its stale error
   // cleared instead.
   private validateSubtreeAndUp(
-    ownErrors: ReadonlyMap<PathKey, ReadonlySet<FieldError>>,
+    ownErrors: ReadonlyMap<PathKey, FieldErrors>,
     path: Path,
     rootValue: unknown,
-  ): ReadonlyMap<PathKey, ReadonlySet<FieldError>> {
+  ): ReadonlyMap<PathKey, FieldErrors> {
     for (const [key, form] of this.forms) {
       if (!form.descriptor.validate) continue;
       const np = pathOf(key);
@@ -427,7 +428,7 @@ export class FormStore {
    * the results. Returns the union of the errors found, or
    * {@link NO_FIELD_ERRORS} when the subtree is valid.
    */
-  validateSubtree(path: Path): ReadonlySet<FieldError> {
+  validateSubtree(path: Path): FieldErrors {
     let ownErrors = this.snapshot.ownErrors;
     const all = new Set<FieldError>();
     for (const [key, form] of this.forms) {
@@ -452,12 +453,12 @@ export class FormStore {
   // --- reads ----------------------------------------------------------------
 
   /** Union of own errors at and below `path`. */
-  aggregateErrorsAt(path: Path): ReadonlySet<FieldError> {
+  aggregateErrorsAt(path: Path): FieldErrors {
     return aggregateErrors(this.snapshot.ownErrors, path);
   }
 
   /** This form's own errors only (excludes descendants). */
-  ownErrorsAt(path: Path): ReadonlySet<FieldError> {
+  ownErrorsAt(path: Path): FieldErrors {
     return this.snapshot.ownErrors.get(keyOf(path)) ?? NO_FIELD_ERRORS;
   }
 }
