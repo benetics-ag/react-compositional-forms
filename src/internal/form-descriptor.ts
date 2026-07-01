@@ -23,11 +23,11 @@
  * See {@link FormDescriptor} for a worked example.
  */
 
-import {FieldError} from '../field-errors';
+import type {FieldErrors} from '../field-errors';
 import {Segment} from './path';
 
 /** Validate a value, returning its errors (empty when valid). */
-export type Validator<T> = (value: T) => Set<FieldError>;
+export type Validator<T> = (value: T) => FieldErrors;
 
 /** Decide whether two values of a form are equal, for its dirtiness check. */
 export type Equals<T> = (a: T, b: T) => boolean;

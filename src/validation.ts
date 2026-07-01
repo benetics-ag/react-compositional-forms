@@ -3,6 +3,7 @@
  */
 
 import {FieldError, NO_FIELD_ERRORS} from './field-errors';
+import type {FieldErrors} from './field-errors';
 
 type ValueMessage<T> = {
   value: T;
@@ -24,7 +25,7 @@ type ArrayRules = {
 };
 
 export const arrayRules = <T>({required}: ArrayRules) => {
-  const validate = (value: T[]) => {
+  const validate = (value: T[]): FieldErrors => {
     const errors = new Set<FieldError>();
 
     // required
@@ -65,7 +66,7 @@ export const stringRules = ({
   pattern,
   required,
 }: StringRules) => {
-  const validate = (value: string) => {
+  const validate = (value: string): FieldErrors => {
     // Any maxLength value must be greater than or equal to the value of
     // minLength, if present.
     if (maxLength && minLength) {
@@ -152,8 +153,6 @@ export const stringRules = ({
  * @param errors The set of errors.
  * @returns An arbitrary error from the set of errors, if any.
  */
-export function someError(
-  errors: ReadonlySet<FieldError>,
-): FieldError | undefined {
+export function someError(errors: FieldErrors): FieldError | undefined {
   return errors.values().next().value;
 }

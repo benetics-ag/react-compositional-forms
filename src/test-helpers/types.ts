@@ -1,4 +1,4 @@
-import {FieldError, FormState} from '..';
+import {type FieldErrors, FormState} from '..';
 
 /** Allows for configuring the test behavior (e.g. buttons). */
 export type TestProps<T> = {
@@ -27,7 +27,7 @@ export type TestProps<T> = {
 
   setValueMode?: 'onBlur' | 'onChange' | 'set';
 
-  validate?: (value: T) => Set<FieldError>;
+  validate?: (value: T) => FieldErrors;
 
   mode?: 'onBlur' | 'onChange';
 };
