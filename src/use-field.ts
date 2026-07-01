@@ -78,8 +78,8 @@ export type UseFieldProps<T> = {
    * Validation function that validates the field value.
    *
    * @param value The value to validate.
-   * @returns A set of errors. If the set is empty the value is considered
-   * valid.
+   * @returns A readonly-set of errors. If the set is empty the value is
+   * considered valid.
    */
   validate?: (value: T) => FieldErrors;
 };
