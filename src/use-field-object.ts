@@ -1,8 +1,12 @@
 import React from 'react';
 
 import {Form} from './form';
-import {FormDescriptor} from './internal/form-descriptor';
-import {useFormSlice, useRegisterDescriptor} from './internal/use-store-slice';
+import {ChildRef, Composite} from './internal/form-descriptor';
+import {
+  childForms,
+  useFormSlice,
+  useRegisterDescriptor,
+} from './internal/use-store-slice';
 
 export type UseFieldObjectProps<O extends object> = {
   /** Parent control. */
@@ -19,6 +23,19 @@ export type UseFieldObjectReturn<O extends object> = {
   fields: {[P in keyof O]: UseFieldObjectField<O[P]>};
 };
 
+// The object as a container keyed by property name. Hoisted to module scope
+// (they close over nothing) so the `fields` memo can depend on just
+// [form, value] — inline definitions would be new references each render and
+// rebuild it every time.
+const decompose = <O extends {[prop: string]: unknown}>(
+  value: O,
+): ChildRef<O, string, unknown>[] =>
+  Object.keys(value).map(k => ({key: k, read: o => o[k]}));
+
+const build = <O extends {[prop: string]: unknown}>(
+  children: Iterable<readonly [string, unknown]>,
+): O => Object.fromEntries(children) as O;
+
 /**
  * Decompose an object form into one form per key. The object is dirty when
  * any child is dirty; it carries no validation of its own (children validate
@@ -27,24 +44,7 @@ export type UseFieldObjectReturn<O extends object> = {
 export const useFieldObject = <O extends {[prop: string]: unknown}>({
   control: form,
 }: UseFieldObjectProps<O>): UseFieldObjectReturn<O> => {
-  const descriptor: FormDescriptor<O> = {
-    // Iterate keys, not Object.entries: `read` projects from whatever object the
-    // walk passes it — the current value or the baseline — not from `v`.
-    decompose: v => Object.keys(v).map(k => ({segment: k, read: o => o[k]})),
-    // An object carries no own value beyond its children, so it is dirty only
-    // when a child is.
-    equals: () => true,
-    rebuild: (old, init, reset, recurse) => {
-      // The rebuilt object takes the reset value's key set: a key the reset
-      // adds appears, a key it drops is gone, a key in both is rebuilt from its
-      // child. With no reset value at this position, keep the current keys.
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(reset ?? old)) {
-        out[k] = recurse(k, old[k], init?.[k], reset?.[k]);
-      }
-      return out as O;
-    },
-  };
+  const descriptor: Composite<O, string, unknown> = {decompose, build};
   useRegisterDescriptor(form, descriptor);
 
   // Re-render when this object's own value reference changes (a change anywhere
@@ -52,19 +52,13 @@ export const useFieldObject = <O extends {[prop: string]: unknown}>({
   const value = useFormSlice(form, () => form.value, Object.is);
 
   const fields = React.useMemo(() => {
-    const out = {} as {[P in keyof O]: UseFieldObjectField<O[P]>};
-    for (const key of Object.keys(value) as (keyof O & string)[]) {
-      out[key] = {
-        control: form.internal.child(
-          key,
-          o => o[key],
-          (o, s) => ({...o, [key]: s}),
-        ),
-      };
+    const out: Record<string, UseFieldObjectField<unknown>> = {};
+    for (const {key, control} of childForms(form, decompose, build, value)) {
+      out[key] = {control};
     }
-    return out;
-    // Each child form is a pure key projection; rebuild when the form
-    // identity or the value changes.
+    // The children are typed `unknown` in the shared derivation; an object's
+    // per-key value types are recovered by this return type.
+    return out as {[P in keyof O]: UseFieldObjectField<O[P]>};
   }, [form, value]);
 
   return {fields};

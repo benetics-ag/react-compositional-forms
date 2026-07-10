@@ -31,7 +31,7 @@ import {
   Segment,
   segmentsEqual,
 } from './path';
-import {ChildRef, FormDescriptor} from './form-descriptor';
+import {FormDescriptor, isComposite} from './form-descriptor';
 import {DescriptorAt, rebuildKeepDirty, walkValue} from './traversal';
 
 /** When a form's validators run: on every change, or only on blur. */
@@ -188,25 +188,15 @@ export class FormStore {
   /**
    * Record how the form at `path` behaves, so the walks and validation can find
    * it. `read` extracts the form's value from a root value; `descriptor`
-   * declares its structure and rules. Re-registering merges the supplied
-   * descriptor fields over the existing ones, leaving fields the new descriptor
-   * omits in place.
+   * declares its structure and rules. Re-registering replaces the previous
+   * descriptor, so a validator closing over fresh props takes effect.
    */
   register(
     path: Path,
     read: (root: unknown) => unknown,
     descriptor: FormDescriptor,
   ): void {
-    const k = keyOf(path);
-    const prev = this.forms.get(k)?.descriptor;
-    // A literal, not a keyed loop, so each field stays typed.
-    const merged: FormDescriptor = {
-      decompose: descriptor.decompose ?? prev?.decompose,
-      equals: descriptor.equals ?? prev?.equals,
-      rebuild: descriptor.rebuild ?? prev?.rebuild,
-      validate: descriptor.validate ?? prev?.validate,
-    };
-    this.forms.set(k, {read, descriptor: merged});
+    this.forms.set(keyOf(path), {read, descriptor});
   }
 
   /**
@@ -257,16 +247,18 @@ export class FormStore {
     let prefix: Path = ROOT;
     for (const seg of path) {
       const desc = this.descriptorAt(prefix);
-      if (!desc?.decompose) return false;
-      let found: ChildRef | undefined;
+      if (desc === undefined || !isComposite(desc)) return false;
+      let next: unknown;
+      let matched = false;
       for (const ref of desc.decompose(cur)) {
-        if (segmentsEqual(ref.segment, seg)) {
-          found = ref;
+        if (segmentsEqual(ref.key, seg)) {
+          next = ref.read(cur);
+          matched = true;
           break;
         }
       }
-      if (!found) return false;
-      cur = found.read(cur);
+      if (!matched) return false;
+      cur = next;
       prefix = childPath(prefix, seg);
     }
     return true;
