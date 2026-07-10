@@ -12,7 +12,8 @@ import React from 'react';
 import type {FieldErrors} from '../field-errors';
 import {fieldErrorSetsDeepEqual} from '../field-errors';
 import {Form} from '../form';
-import {FormDescriptor} from './form-descriptor';
+import {ChildRef, Composite, FormDescriptor, Leaf} from './form-descriptor';
+import {Json, keyOf} from './path';
 import {Snapshot} from './store';
 
 /**
@@ -54,6 +55,40 @@ export function useFormSlice<T, S>(
   return React.useSyncExternalStore(store.subscribe, getSlice, getSlice);
 }
 
+/**
+ * Build a `Form` handle for each child of a composite from its `decompose` and
+ * `build`.
+ *
+ * Each child's read is its {@link ChildRef.read}; its write rebuilds the parent
+ * with that one child replaced — decompose the parent, swap the child at its
+ * key, build. Both run against the live parent value, so a handle stays correct
+ * as the value changes.
+ */
+export function childForms<T, Key extends Json, Child>(
+  form: Form<T>,
+  decompose: (value: T) => Iterable<ChildRef<T, Key, Child>>,
+  build: (children: Iterable<readonly [Key, Child]>) => T,
+  value: T,
+): {key: Key; control: Form<Child>}[] {
+  return [...decompose(value)].map(ref => {
+    const pathKey = keyOf([ref.key]);
+    return {
+      key: ref.key,
+      control: form.internal.child<Child>(ref.key, ref.read, (parent, child) =>
+        build(
+          [...decompose(parent)].map(
+            r =>
+              [
+                r.key,
+                keyOf([r.key]) === pathKey ? child : r.read(parent),
+              ] as const,
+          ),
+        ),
+      ),
+    };
+  });
+}
+
 /** Deep-equal comparison for error sets, for use as a slice `isEqual`. */
 export function errorSetsEqual(a: FieldErrors, b: FieldErrors): boolean {
   return fieldErrorSetsDeepEqual(a, b);
@@ -65,17 +100,19 @@ export function errorSetsEqual(a: FieldErrors, b: FieldErrors): boolean {
  * descriptor is re-registered after every commit, so a validator that closes
  * over fresh props replaces the one from the previous render.
  */
-export function useRegisterDescriptor<T>(
-  form: Form<T>,
-  descriptor: FormDescriptor<T> | null,
-): void {
+export function useRegisterDescriptor<
+  T,
+  Key extends Json = Json,
+  Child = unknown,
+>(form: Form<T>, descriptor: Leaf<T> | Composite<T, Key, Child> | null): void {
   // Re-register every render so a validator closing over fresh props replaces
   // the previous one. No cleanup here: re-registration overwrites in place, and
   // tearing the registration down between renders would unregister the form on
-  // every commit.
+  // every commit. The descriptor is stored with its container's key/element
+  // types erased, so cast to the erased form the store holds.
   React.useLayoutEffect(() => {
     if (!descriptor) return;
-    form.internal.register(descriptor);
+    form.internal.register(descriptor as unknown as FormDescriptor<T>);
   });
 
   // Unregister on a true unmount only — a `[]` effect, so it does not fire

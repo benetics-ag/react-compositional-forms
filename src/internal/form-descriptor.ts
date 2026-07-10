@@ -3,120 +3,119 @@
  *
  * A *form* is a value being edited at one position in a form tree: the whole
  * record at the root, an object partway down, an array, a single text field at a
- * leaf. To support a kind of value — an object, an array, a `Set`, a date, a
- * domain object — write a {@link FormDescriptor} for it and register it on the
- * form with `form.internal.register(descriptor)`.
+ * leaf. To support a kind of value — a `Set`, a `Map`, a date, a domain object —
+ * write a {@link FormDescriptor} for it and register it on the form with
+ * `form.internal.register(descriptor)`.
  *
- * A descriptor answers, for one form:
+ * A form is either a {@link Leaf} or a {@link Composite}:
  *
- *   - Whether the form decomposes into child forms, and into which.
- *     ({@link FormDescriptor.decompose}.) A form with children is a *composite*; a
- *     form with none is a *leaf*. Editing, validation, and reset reach a child
- *     through its parent's decomposition.
- *   - Whether the form's own value is unchanged, apart from its children — value
- *     equality for a leaf, structural identity for a collection (an array's
- *     length, a map's keys). ({@link FormDescriptor.equals}.)
- *   - How to rebuild the value when only part of it is reset.
- *     ({@link FormDescriptor.rebuild}.)
- *   - Whether the value is valid. ({@link FormDescriptor.validate}.)
+ *   - A **Leaf** is edited as one opaque value. It says only how two of its
+ *     values compare ({@link Leaf.equals}) and, optionally, whether a value is
+ *     valid ({@link Leaf.validate}).
+ *   - A **Composite** is a container of child forms, each under a JSON key. It
+ *     says how a value takes apart into `(key, child)` pairs ({@link
+ *     Composite.decompose}) and how such pairs assemble back into a value
+ *     ({@link Composite.build}). Its dirtiness, validity, and reset all derive
+ *     from its children plus that key structure; it needs no own equality,
+ *     because a composite is dirty exactly when a child is or its key set has
+ *     changed.
  *
- * See {@link FormDescriptor} for a worked example.
+ * A composite decomposes into and builds from `(key, child)` pairs, so any
+ * container fits: an array uses its indices as keys, an object its property
+ * names, a `Map` its keys. `decompose` and `build` must round-trip — building
+ * from what `decompose` produced returns an equal value.
  */
 
 import type {FieldErrors} from '../field-errors';
-import {Segment} from './path';
+import {Json} from './path';
 
 /** Validate a value, returning its errors (empty when valid). */
 export type Validator<T> = (value: T) => FieldErrors;
 
-/** Decide whether two values of a form are equal, for its dirtiness check. */
+/** Decide whether two leaf values are equal, for its dirtiness check. */
 export type Equals<T> = (a: T, b: T) => boolean;
 
 /**
- * One child a composite form decomposes into: its `segment`, the child's identity
- * under its parent, and `read`, which extracts the child's value from the
- * parent's value.
- *
- * `T` is the parent value's type. It appears only in `read`'s parameter — the
- * child's value type is erased to `unknown` — so that `decompose: (value: T) =>
- * ChildRef<T>[]` types each `read` to receive the value it decomposed.
+ * One child a composite decomposes into: its `key` and its `read`. The `key` is
+ * the child's identity under its parent — any JSON value. `read` projects the
+ * child's value out of a parent value; it is written against the key, not a
+ * captured value, so the same {@link ChildRef} reads its child out of any parent
+ * value of that shape, not only the one it was decomposed from.
  */
-export type ChildRef<T = unknown> = {
-  readonly segment: Segment;
-  readonly read: (parentValue: T) => unknown;
+export type ChildRef<T, Key extends Json, Child> = {
+  readonly key: Key;
+  readonly read: (parentValue: T) => Child;
 };
 
 /**
- * What a combinator tells the library about one kind of form. The fields are
- * independent and all optional: supplying none describes a plain leaf compared
- * with `Object.is`; a leaf overrides `equals`/`validate` as needed; a composite
- * additionally supplies `decompose` and `rebuild`. The library reads `decompose`
- * to tell leaf from composite and does not enforce the pairing, so supplying a
- * coherent set is the combinator's responsibility.
+ * A form edited as one opaque value, with no children.
  *
  * @example
- * // A leaf holding a Date, dirty when the instant changes:
- * const dateForm: FormDescriptor<Date> = {
+ * // A Date leaf, dirty when the instant changes:
+ * const dateForm: Leaf<Date> = {
  *   equals: (a, b) => a.getTime() === b.getTime(),
  * };
- *
- * @example
- * // A composite: an object that splits into its keys and rebuilds from them.
- * const objectForm: FormDescriptor<Record<string, unknown>> = {
- *   decompose: obj =>
- *     Object.keys(obj).map(k => ({segment: k, read: o => o[k]})),
- *   equals: () => true, // no own value beyond its children
- *   rebuild: (current, initial, reset, child) => {
- *     // Take the reset value's key set, falling back to the current keys when
- *     // there is no reset value at this position.
- *     const out: Record<string, unknown> = {};
- *     for (const k of Object.keys(reset ?? current)) {
- *       out[k] = child(k, current[k], initial?.[k], reset?.[k]);
- *     }
- *     return out;
- *   },
- * };
  */
-export interface FormDescriptor<T = unknown> {
+export type Leaf<T> = {
   /**
-   * The form's child forms, extracted from its value. A leaf omits this (or
-   * returns no children); a composite returns one {@link ChildRef} per child.
-   */
-  readonly decompose?: (value: T) => readonly ChildRef<T>[];
-
-  /**
-   * This form's own equality, ignoring its children: whether two of its values
-   * are the same apart from anything the children own. Defaults to `Object.is`.
-   *
-   * A leaf overrides it for a value compared by more than reference — a `Set`, a
-   * `Date`, a domain object. A composite must override it too: an object
-   * carrying no own value beyond its children uses `() => true`; a collection
-   * uses its structural identity — an array its length, a map its key set. (A
-   * composite's value object is rebuilt on each edit, so the default `Object.is`
-   * would never hold.)
+   * Whether two of this leaf's values are equal, for its dirtiness check.
+   * Defaults to `Object.is`. Override for a value compared by more than
+   * reference — a `Date`, a `Set` held opaque, a domain object.
    */
   readonly equals?: Equals<T>;
 
-  /**
-   * Rebuild the form's value for a partial (`keepDirtyValues`) reset, in which a
-   * changed child keeps its current value and an unchanged child takes the reset
-   * value. Reconstruct the value from the children, deciding each one with
-   * `child(segment, childCurrent, childInitial, childReset)` — which applies the
-   * same keep-or-reset rule one level down and returns that child's value.
-   * `initialValue` and `resetValue` are `undefined` when the form has none.
-   */
-  readonly rebuild?: (
-    value: T,
-    initialValue: T | undefined,
-    resetValue: T | undefined,
-    child: (
-      segment: Segment,
-      childCurrent: unknown,
-      childInitial: unknown,
-      childReset: unknown,
-    ) => unknown,
-  ) => T;
-
-  /** Validate the form's value, returning its errors (empty when valid). */
+  /** Validate the value, returning its errors (empty when valid). */
   readonly validate?: Validator<T>;
+};
+
+/**
+ * A form whose value is a container of child forms, each under a JSON key.
+ *
+ * `decompose` takes a value apart into its `(key, read)` children; `build`
+ * assembles a value from `(key, child)` pairs. The two must round-trip.
+ * Dirtiness and reset derive from these plus the key structure — a composite is
+ * dirty when a child is or its key set differs from its initial — so it supplies
+ * no `equals` of its own.
+ *
+ * `Key` and `Child` are the container's key and element types — `number`/`T` for
+ * an array of `T`, `K`/`V` for a `Map<K, V>`. A heterogeneous container (an
+ * object whose properties differ in type) uses `Child = unknown`.
+ *
+ * @example
+ * // An object that splits into its keys and rebuilds from them:
+ * const objectForm: Composite<Record<string, unknown>, string, unknown> = {
+ *   decompose: obj =>
+ *     Object.keys(obj).map(k => ({key: k, read: o => o[k]})),
+ *   build: entries => Object.fromEntries(entries),
+ * };
+ */
+export type Composite<T, Key extends Json, Child> = {
+  /** Take a value apart into its children, each a `(key, read)` pair. */
+  readonly decompose: (value: T) => Iterable<ChildRef<T, Key, Child>>;
+
+  /**
+   * Assemble a value from `(key, child)` pairs. The pairs' key set may differ
+   * from any current value's — a reset can add or drop an element — so `build`
+   * reconstructs from the pairs it is given rather than editing a value in place.
+   */
+  readonly build: (children: Iterable<readonly [Key, Child]>) => T;
+
+  /** Validate the value, returning its errors (empty when valid). */
+  readonly validate?: Validator<T>;
+};
+
+/**
+ * What a combinator tells the library about one kind of form: a {@link Leaf} or a
+ * {@link Composite}. `FormDescriptor` erases the container's key and element types
+ * to `Json`/`unknown` — one type spans forms of every shape — while a combinator
+ * writes a `Leaf` or `Composite` at its precise `Key`/`Child` types and registers
+ * that.
+ */
+export type FormDescriptor<T = unknown> = Leaf<T> | Composite<T, Json, unknown>;
+
+/** Whether a descriptor describes a {@link Composite} (has children). */
+export function isComposite<T>(
+  descriptor: FormDescriptor<T>,
+): descriptor is Composite<T, Json, unknown> {
+  return 'decompose' in descriptor;
 }

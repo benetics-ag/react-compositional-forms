@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import {
   Control,
   NO_FIELD_ERRORS,
+  useField,
   useFieldArray,
   useFieldObject,
   useForm,
@@ -798,5 +799,130 @@ describe('FieldArray', () => {
     // The appended row — itself an array — is clean until edited, even though the
     // outer array is dirty because its length grew.
     expect(screen.getByText('row1: clean')).toBeTruthy();
+  });
+
+  describe('keepDirtyValues reset never hands a leaf equality an off-type value', () => {
+    type Row = {name: string};
+
+    // A leaf equality that parses its inputs, so it throws on anything but its
+    // declared type. The core must never call it with a value from outside that
+    // type — an absent baseline read as `undefined`.
+    const strictStringEquals = (a: string, b: string) => {
+      if (typeof a !== 'string' || typeof b !== 'string') {
+        throw new Error(
+          `equality received a non-string: ${JSON.stringify(a)}, ${JSON.stringify(b)}`,
+        );
+      }
+      return a === b;
+    };
+
+    const Cell = ({
+      control,
+      name,
+    }: {
+      control: Control<string>;
+      name: string;
+    }) => {
+      const {
+        field: {onChange, value},
+      } = useField({control, equalsFn: strictStringEquals});
+      return (
+        <input
+          data-testid={`cell-${name}`}
+          onChange={e => onChange(e.target.value)}
+          value={value}
+        />
+      );
+    };
+
+    const RowFields = ({
+      control,
+      name,
+    }: {
+      control: Control<Row>;
+      name: string;
+    }) => {
+      const {fields} = useFieldObject({control});
+      return <Cell control={fields.name.control} name={name} />;
+    };
+
+    const Table = ({
+      initialValue,
+      resetValue,
+    }: {
+      initialValue: Row[];
+      resetValue: Row[];
+    }) => {
+      const {control, reset} = useForm<Row[]>({initialValue});
+      const {fields, append} = useFieldArray({control});
+      return (
+        <div>
+          {fields.map((field, i) => (
+            <RowFields key={i} control={field.control} name={i.toString()} />
+          ))}
+          <button onClick={() => append({name: 'appended'})} title="add row" />
+          <button
+            onClick={() => reset(resetValue, {keepDirtyValues: true})}
+            title="reset"
+          />
+        </div>
+      );
+    };
+
+    it('keeps a grown row and resets the rest without throwing', async () => {
+      // The appended row has no counterpart in the initial value, so its cell has
+      // no initial baseline. Resetting onto a value that also holds that row used
+      // to parse `undefined` as the cell's baseline and throw.
+      render(
+        <Table
+          initialValue={[{name: 'a'}]}
+          resetValue={[{name: 'x'}, {name: 'y'}]}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
+      expect(screen.getByTestId('cell-0')).toHaveValue('x');
+      expect(screen.getByTestId('cell-1')).toHaveValue('y');
+    });
+
+    it('merges a grown-then-edited row against its own frozen baseline', async () => {
+      // Editing the appended row forces the row's object rebuild to run: its cell
+      // is compared against the frozen row's cell (a real string), not an absent
+      // initial. The edited grown row is dirty, so keepDirtyValues keeps it.
+      render(
+        <Table
+          initialValue={[{name: 'a'}]}
+          resetValue={[{name: 'x'}, {name: 'y'}]}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'add row'}));
+      await user.type(screen.getByTestId('cell-1'), '!');
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
+      expect(screen.getByTestId('cell-0')).toHaveValue('x');
+      expect(screen.getByTestId('cell-1')).toHaveValue('appended!');
+    });
+
+    it('takes reset-only rows from the reset when the reset grows the array', async () => {
+      // The reset is longer than the current value, so its extra row exists only
+      // in the reset: the array rebuild takes it directly rather than recursing
+      // into a current row that isn't there. Row 0 is edited (kept dirty) so the
+      // merge runs rather than the whole-subtree reset short-circuit.
+      render(
+        <Table
+          initialValue={[{name: 'a'}]}
+          resetValue={[{name: 'x'}, {name: 'y'}]}
+        />,
+      );
+
+      await user.type(screen.getByTestId('cell-0'), '!');
+      await user.click(screen.getByRole('button', {name: 'reset'}));
+
+      expect(screen.getByTestId('cell-0')).toHaveValue('a!');
+      expect(screen.getByTestId('cell-1')).toHaveValue('y');
+    });
   });
 });

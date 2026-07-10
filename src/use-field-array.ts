@@ -2,8 +2,9 @@ import React from 'react';
 
 import type {FieldErrors} from './field-errors';
 import {Form} from './form';
-import {FormDescriptor, Validator} from './internal/form-descriptor';
+import {ChildRef, Composite, Validator} from './internal/form-descriptor';
 import {
+  childForms,
   errorSetsEqual,
   useFormSlice,
   useRegisterDescriptor,
@@ -65,6 +66,18 @@ export type UseFieldArrayReturn<T> = {
   remove: (index: number) => void;
 };
 
+// The array as a container keyed by index. Hoisted to module scope (they close
+// over nothing) so the `fields` memo can depend on just [form, value] — inline
+// definitions would be new references each render and rebuild it every time.
+const decompose = <T>(value: T[]): ChildRef<T[], number, T>[] =>
+  value.map((_x, i) => ({key: i, read: a => a[i]}));
+
+const build = <T>(children: Iterable<readonly [number, T]>): T[] => {
+  const out: T[] = [];
+  for (const [i, x] of children) out[i] = x;
+  return out;
+};
+
 /**
  * Combine child forms into an array. The array is dirty when any child is dirty
  * or its current length differs from its initial length. A child appended past
@@ -79,42 +92,16 @@ export const useFieldArray = <T>({
   const value = useFormSlice(form, () => form.value, Object.is);
   const errors = useFormSlice(form, () => form.ownErrors, errorSetsEqual);
 
-  const descriptor: FormDescriptor<T[]> = {
+  const descriptor: Composite<T[], number, T> = {
+    decompose,
+    build,
     validate: validate as Validator<T[]> | undefined,
-    decompose: v => v.map((_x, i) => ({segment: i, read: a => a[i]})),
-    equals: (a, b) => a.length === b.length,
-    rebuild: (old, init, reset, recurse) => {
-      const lengthDirty = (init?.length ?? 0) !== old.length;
-      const targetLen = lengthDirty
-        ? old.length
-        : (reset?.length ?? old.length);
-      const out: T[] = [];
-      for (let i = 0; i < targetLen; i++) {
-        // An element past the reset value's length keeps its current value (the
-        // walk re-freezes its baseline to it).
-        out[i] =
-          reset && i < reset.length
-            ? (recurse(i, old[i], init?.[i], reset[i]) as T)
-            : old[i];
-      }
-      return out;
-    },
   };
   useRegisterDescriptor(form, descriptor);
 
   const fields = React.useMemo(
     () =>
-      value.map((_v, index) => ({
-        control: form.internal.child(
-          index,
-          arr => arr[index],
-          (arr, s) => {
-            const next = arr.slice();
-            next[index] = s;
-            return next;
-          },
-        ),
-      })),
+      childForms(form, decompose, build, value).map(({control}) => ({control})),
     [form, value],
   );
 

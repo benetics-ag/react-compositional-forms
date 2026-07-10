@@ -81,16 +81,12 @@ export interface FormInternal<T> {
   readonly path: Path;
 
   /**
-   * Build the `Form` for the child at `segment`. A combinator calls this to hand
+   * Build the `Form` for the child at `key`. A combinator calls this to hand
    * each of its children a `Form` of its own: `read` extracts the child's value
    * from this form's value, and `write` produces a new value of this form with
-   * one child's value replaced. The child lives one segment deeper in the tree.
+   * one child's value replaced. The child lives one level deeper in the tree.
    */
-  child<S>(
-    segment: Segment,
-    read: (t: T) => S,
-    write: (t: T, s: S) => T,
-  ): Form<S>;
+  child<S>(key: Segment, read: (t: T) => S, write: (t: T, s: S) => T): Form<S>;
 
   /**
    * Declare how this form behaves — its validator, value equality, and how it
@@ -99,8 +95,8 @@ export interface FormInternal<T> {
    */
   register(descriptor: FormDescriptor<T>): void;
 
-  /** Reindex this form's children by mapping each segment to its new segment (or `null` to drop). */
-  remapChildren(remap: (childSegment: Segment) => Segment | null): void;
+  /** Reindex this form's children by mapping each key to its new key (or `null` to drop). */
+  remapChildren(remap: (key: Segment) => Segment | null): void;
 }
 
 export function makeForm<T>(
@@ -168,10 +164,10 @@ export function makeForm<T>(
     internal: {
       store,
       path,
-      child(segment, childRead, childWrite) {
+      child(key, childRead, childWrite) {
         return makeForm(
           store,
-          childPath(path, segment),
+          childPath(path, key),
           root => childRead(read(root)),
           (root, s) => write(root, childWrite(read(root), s)),
         );

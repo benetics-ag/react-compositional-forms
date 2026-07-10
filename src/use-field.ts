@@ -1,6 +1,6 @@
 import type {FieldErrors} from './field-errors';
 import {Form} from './form';
-import {Equals, FormDescriptor, Validator} from './internal/form-descriptor';
+import {Equals, Leaf, Validator} from './internal/form-descriptor';
 import {
   errorSetsEqual,
   useFormSlice,
@@ -105,7 +105,7 @@ export const useField = <T>({
   // Contribute this leaf's validator and (non-default) equality. A pure-default
   // leaf registers nothing — the walk's reference compare is already its rule.
   const customEquals = equalsFn !== Object.is;
-  const descriptor: FormDescriptor<T> | null =
+  const descriptor: Leaf<T> | null =
     validate || customEquals
       ? {
           validate: validate as Validator<T> | undefined,
