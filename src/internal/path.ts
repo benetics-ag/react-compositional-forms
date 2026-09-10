@@ -19,12 +19,12 @@
  * functions, and class instances do not.
  */
 export type Json =
-  | null
-  | boolean
-  | number
-  | string
+  | JsonPrimitive
   | readonly Json[]
   | {readonly [key: string]: Json};
+
+/** A JSON scalar: `null`, a boolean, a number, or a string. */
+export type JsonPrimitive = null | boolean | number | string;
 
 /**
  * One step in a path, identifying a child within its parent: an object key

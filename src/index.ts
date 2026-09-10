@@ -13,13 +13,26 @@
 //   https://react.dev/reference/react/useRef#avoiding-recreating-the-ref-contents
 //   to avoid unnecessary recomputation on every render.
 
-export {type Form as Control} from './form';
+export {type Form as Control, type Restructure} from './form';
 export {
   type FieldError,
   type FieldErrors,
   NO_FIELD_ERRORS,
 } from './field-errors';
 export {type ValidationMode} from './internal/store';
+export {type Composite} from './internal/form-descriptor';
+export {type Json, type JsonPrimitive} from './internal/path';
+export {
+  useFieldMap,
+  type UseFieldMapField,
+  type UseFieldMapProps,
+  type UseFieldMapReturn,
+} from './use-field-map';
+export {
+  type CompositeChild,
+  useComposite,
+  type UseCompositeReturn,
+} from './use-composite';
 export {
   type UseFieldField as FieldControl,
   type UseFieldFieldState as FieldState,
@@ -33,6 +46,7 @@ export {
   type UseFieldArrayProps,
   type UseFieldArrayReturn,
 } from './use-field-array';
+export {useFieldState} from './use-field-state';
 export {
   useFieldObject,
   type UseFieldObjectField,

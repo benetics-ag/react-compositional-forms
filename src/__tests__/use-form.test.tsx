@@ -122,6 +122,33 @@ describe('useForm', () => {
     ).toBeTruthy();
   });
 
+  it('applies consecutive updater writes to one child together', async () => {
+    const Form = () => {
+      const {control, value} = useForm({initialValue: {name: ''}});
+      const {fields} = useFieldObject({control});
+
+      return (
+        <div>
+          <TextField name="name" parentControl={fields.name.control} />
+          <button
+            onClick={() => {
+              fields.name.control.setValue(prev => prev + 'a');
+              fields.name.control.setValue(prev => prev + 'b');
+            }}
+            title="append twice"
+          />
+          <p>Form: {JSON.stringify(value)}</p>
+        </div>
+      );
+    };
+
+    render(<Form />);
+
+    await user.click(screen.getByRole('button', {name: 'append twice'}));
+
+    expect(screen.getByTestId('input-name')).toHaveValue('ab');
+  });
+
   it('keeps working under StrictMode', async () => {
     // StrictMode double-invokes render and mount effects; descriptor
     // registration and subscription must stay correct (no double-registration,

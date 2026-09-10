@@ -2,13 +2,9 @@ import React from 'react';
 
 import type {FieldErrors} from './field-errors';
 import {Form} from './form';
-import {ChildRef, Composite, Validator} from './internal/form-descriptor';
-import {
-  childForms,
-  errorSetsEqual,
-  useFormSlice,
-  useRegisterDescriptor,
-} from './internal/use-store-slice';
+import {expectArray} from './internal/expect-value';
+import {Composite} from './internal/form-descriptor';
+import {useComposite} from './use-composite';
 
 export type UseFieldArrayProps<T> = {
   /**
@@ -66,11 +62,10 @@ export type UseFieldArrayReturn<T> = {
   remove: (index: number) => void;
 };
 
-// The array as a container keyed by index. Hoisted to module scope (they close
-// over nothing) so the `fields` memo can depend on just [form, value] — inline
-// definitions would be new references each render and rebuild it every time.
-const decompose = <T>(value: T[]): ChildRef<T[], number, T>[] =>
-  value.map((_x, i) => ({key: i, read: a => a[i]}));
+const decompose = <T>(value: T[]): Iterable<readonly [number, T]> => {
+  expectArray('useFieldArray', value);
+  return value.map((x, i) => [i, x] as const);
+};
 
 const build = <T>(children: Iterable<readonly [number, T]>): T[] => {
   const out: T[] = [];
@@ -89,44 +84,30 @@ export const useFieldArray = <T>({
   control: form,
   validate,
 }: UseFieldArrayProps<T>): UseFieldArrayReturn<T> => {
-  const value = useFormSlice(form, () => form.value, Object.is);
-  const errors = useFormSlice(form, () => form.ownErrors, errorSetsEqual);
-
-  const descriptor: Composite<T[], number, T> = {
-    decompose,
-    build,
-    validate: validate as Validator<T[]> | undefined,
-  };
-  useRegisterDescriptor(form, descriptor);
+  const descriptor: Composite<T[], number, T> = {decompose, build, validate};
+  const {children, errors} = useComposite(form, descriptor);
 
   const fields = React.useMemo(
-    () =>
-      childForms(form, decompose, build, value).map(({control}) => ({control})),
-    [form, value],
+    () => children.map(({control}) => ({control})),
+    [children],
   );
 
   const append = React.useCallback(
     (initialItemValue: T) => {
-      form.setValue([...form.value, initialItemValue], 'up');
+      form.setValue(prev => [...prev, initialItemValue], 'up');
     },
     [form],
   );
 
   const remove = React.useCallback(
     (index: number) => {
-      const current = form.value;
-      if (index < 0 || index >= current.length) return;
-      // Shift per-child state down past the removed slot, then drop the value.
-      form.internal.remapChildren(seg => {
-        const n = seg as number;
-        if (n < index) return n;
-        if (n === index) return null;
-        return n - 1;
+      form.internal.restructure<number>(prev => {
+        if (index < 0 || index >= prev.length) return null;
+        return {
+          value: prev.filter((_, i) => i !== index),
+          remap: i => (i < index ? i : i === index ? null : i - 1),
+        };
       });
-      form.setValue(
-        current.filter((_, i) => i !== index),
-        'up',
-      );
     },
     [form],
   );
