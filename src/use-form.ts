@@ -1,9 +1,10 @@
 import React from 'react';
 
 import type {FieldErrors} from './field-errors';
-import {Form, createRootForm} from './form';
+import {Form, createRootForm, type ResetOptions} from './form';
 import {ValidationMode} from './internal/store';
-import {errorSetsEqual, useFormSlice} from './internal/use-store-slice';
+import {useFormSlice} from './internal/use-store-slice';
+import {useFieldState} from './use-field-state';
 
 export type SetValueOptions = {
   /**
@@ -13,11 +14,6 @@ export type SetValueOptions = {
    * @default 'onChange'
    */
   mode?: 'onChange' | 'onBlur' | 'set';
-};
-
-export type ResetOptions = {
-  /** Keep dirty fields' value and errors; only clean fields take the reset value. */
-  keepDirtyValues?: boolean;
 };
 
 export type UseFormProps<T> = {
@@ -107,11 +103,7 @@ export type UseFormReturn<T> = {
   /** The current state of the form. */
   formState: FormState;
 
-  /**
-   * Equivalent of `value`.
-   *
-   * TODO(tibbe): Remove.
-   */
+  /** The form's value as of the call, rather than of the render that read it. */
   getValues: UseFormGetValues<T>;
 
   /**
@@ -147,15 +139,8 @@ export const useForm = <T>({
   initialValue,
   mode = 'onChange',
 }: UseFormProps<T>): UseFormReturn<T> => {
-  // The root form is created once, so it is stable for the form's lifetime.
-  // Typing the ref non-null (asserted via `null!`) lets the callbacks below read
-  // it without a per-use `!` and keep honestly empty dependency arrays, giving
-  // those handlers a stable identity across renders.
-  const rootRef = React.useRef<ReturnType<typeof createRootForm<T>>>(null!);
-  if (!rootRef.current) {
-    rootRef.current = createRootForm<T>(initialValue, mode);
-  }
-  const control = rootRef.current;
+  const held = React.useRef<Form<T> | null>(null);
+  const control = (held.current ??= createRootForm<T>(initialValue, mode));
 
   const [submit, setSubmit] = React.useState({
     isSubmitted: false,
@@ -163,12 +148,8 @@ export const useForm = <T>({
     isSubmitSuccessful: false,
   });
 
-  const value = useFormSlice(control, () => control.value, Object.is);
-  const aggregate = useFormSlice(
-    control,
-    () => ({isDirty: control.isDirty, errors: control.errors}),
-    (a, b) => a.isDirty === b.isDirty && errorSetsEqual(a.errors, b.errors),
-  );
+  const value = useFormSlice(control, view => view.value, Object.is);
+  const aggregate = useFieldState(control);
 
   const formState = React.useMemo<FormState>(
     () => ({
@@ -180,48 +161,51 @@ export const useForm = <T>({
     [aggregate.errors, aggregate.isDirty, submit],
   );
 
-  // The handlers read `rootRef.current` directly — the root form is stable — so
-  // each closes over only the ref, keeping an empty dependency array and a
-  // stable identity.
   const setValue = React.useCallback<UseFormSetValue<T>>(
     (newValueOrFn, options) => {
-      const root = rootRef.current;
       const writeMode = options?.mode ?? 'onChange';
       const scope =
         writeMode === 'set' || writeMode === 'onBlur' ? 'none' : 'subtree';
-      const next =
-        typeof newValueOrFn === 'function'
-          ? (newValueOrFn as (p: T) => T)(root.value)
-          : newValueOrFn;
-      root.setValue(next, scope);
+      control.setValue(newValueOrFn, scope);
     },
-    [],
+    [control],
   );
 
-  const getValues = React.useCallback(() => rootRef.current.value, []);
+  const getValues = React.useCallback((): T => {
+    const slot = control.internal.read();
+    // The root position is the whole tree; it cannot be missing from it.
+    if (!slot.present) throw new Error('The root form has no value.');
+    return slot.value;
+  }, [control]);
 
-  const reset = React.useCallback((value: T, options?: ResetOptions) => {
-    setSubmit({
-      isSubmitted: false,
-      isSubmitting: false,
-      isSubmitSuccessful: false,
-    });
-    rootRef.current.reset(value, options?.keepDirtyValues ?? false);
-  }, []);
+  const reset = React.useCallback(
+    (value: T, options?: ResetOptions) => {
+      setSubmit({
+        isSubmitted: false,
+        isSubmitting: false,
+        isSubmitSuccessful: false,
+      });
+      control.reset(value, options);
+    },
+    [control],
+  );
 
-  const resetToInitial = React.useCallback((options?: ResetOptions) => {
-    setSubmit({
-      isSubmitted: false,
-      isSubmitting: false,
-      isSubmitSuccessful: false,
-    });
-    rootRef.current.resetToInitial(options?.keepDirtyValues ?? false);
-  }, []);
+  const resetToInitial = React.useCallback(
+    (options?: ResetOptions) => {
+      setSubmit({
+        isSubmitted: false,
+        isSubmitting: false,
+        isSubmitSuccessful: false,
+      });
+      control.resetToInitial(options);
+    },
+    [control],
+  );
 
   const handleSubmit = React.useCallback(
     (onValid: SubmitHandler<T>, onInvalid?: SubmitErrorHandler) =>
       async (e?: React.BaseSyntheticEvent) => {
-        const root = rootRef.current;
+        const root = control;
         setSubmit(s => ({...s, isSubmitting: true, isSubmitSuccessful: false}));
         let ok = false;
         try {
@@ -229,7 +213,7 @@ export const useForm = <T>({
           e?.persist?.();
           const errors = root.validate();
           if (errors.size === 0) {
-            await onValid(root.value, e);
+            await onValid(getValues(), e);
             ok = true;
           } else if (onInvalid) {
             await onInvalid(errors, e);
@@ -243,12 +227,12 @@ export const useForm = <T>({
           }));
         }
       },
-    [],
+    [control, getValues],
   );
 
   const trigger = React.useCallback(() => {
-    rootRef.current.validate();
-  }, []);
+    control.validate();
+  }, [control]);
 
   return React.useMemo(
     () => ({

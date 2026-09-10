@@ -94,7 +94,44 @@ const FieldTest = ({
   );
 };
 
+const ToggleValidateTest = ({validated}: {validated: boolean}) => {
+  const {control, formState} = useForm<string>({initialValue: ''});
+  const {
+    field: {onChange, value},
+    fieldState: {errors},
+  } = useField({
+    control,
+    validate: validated
+      ? v => (v.length > 0 ? NO_FIELD_ERRORS : new Set([{message: 'Required'}]))
+      : undefined,
+  });
+
+  return (
+    <div>
+      <input
+        data-testid="toggle-input"
+        onChange={e => onChange(e.target.value)}
+        value={value}
+      />
+      {errors.size > 0 ? <p>Errors: {stringifyErrors(errors)}</p> : null}
+      {formState.isValid ? <p>Form valid</p> : null}
+    </div>
+  );
+};
+
 describe('Field', () => {
+  it('stops validating once its validator is taken away', async () => {
+    const {rerender} = render(<ToggleValidateTest validated />);
+    await user.type(screen.getByTestId('toggle-input'), 'x');
+    await user.clear(screen.getByTestId('toggle-input'));
+    expect(screen.getByText('Errors: Required')).toBeTruthy();
+
+    rerender(<ToggleValidateTest validated={false} />);
+
+    expect(screen.queryByText('Errors: Required')).toBeNull();
+    expect(screen.getByText('Form valid')).toBeTruthy();
+  });
+
   describe('initial state', () => {
     it('has initial value', () => {
       render(<FieldTest />);
@@ -228,6 +265,17 @@ describe('Field', () => {
   });
 
   describe('setValue', () => {
+    it('ignores a write of a value equal to the current one', async () => {
+      // The initial value is '' and so is the written one: nothing changed, so
+      // nothing validates — the field stays valid, as it was.
+      render(<FieldTest />);
+
+      await user.click(screen.getByRole('button', {name: 'clear value'}));
+
+      expect(screen.queryByText('Errors: Required')).toBeNull();
+      expect(screen.getByText('Form valid')).toBeTruthy();
+    });
+
     it('updates dirty state', async () => {
       render(<FieldTest />);
 

@@ -1,41 +1,45 @@
 /**
  * A handle to one value being edited at a position in a form tree — the whole
- * value at the root, or an object, array, or leaf within it. Read its current
- * value and derived state (errors, dirtiness) through the getters; write it,
- * reset it, and validate it through the methods.
+ * value at the root, or an object, array, or leaf within it.
  *
- * A `Form` is a lightweight handle, not a stateful object: recreate it as often
- * as you like (a fresh one per render is fine) and hold several to the same
- * position at once. Extending the library with new form types goes through
- * {@link Form.internal}.
+ * A handle names a position, not the value that stood there when it was made:
+ * any two handles to one position are interchangeable. A position can cease to
+ * exist, after which operations on a handle to it do nothing, and binding a
+ * component to such a handle is an error.
  */
 
 import type {FieldErrors} from './field-errors';
-import {childPath, keyOf, Path, ROOT, Segment} from './internal/path';
-import {FormDescriptor} from './internal/form-descriptor';
-import {FormStore, ValidateScope, ValidationMode} from './internal/store';
+import {Composite, FormDescriptor} from './internal/form-descriptor';
+import {pathOfSteps, step, Steps} from './internal/lens';
+import {Json, Path} from './internal/path';
+import {Slot} from './internal/slot';
+import {
+  FormStore,
+  Registration,
+  Restructure,
+  ValidateScope,
+  ValidationMode,
+} from './internal/store';
+
+export type {Registration, Restructure} from './internal/store';
+
+export type ResetOptions = {
+  /**
+   * Keep the value and errors of every form in the subtree that differs from
+   * its initial value; only the rest take the reset value.
+   */
+  keepDirtyValues?: boolean;
+};
 
 export interface Form<T> {
-  /** This form's current value. */
-  readonly value: T;
-
-  /** This form's initial value; dirtiness is difference from it. */
-  readonly initialValue: T;
-
-  /** Whether this form's subtree differs from its initial value. */
-  readonly isDirty: boolean;
-
-  /** The errors at and below this form. */
-  readonly errors: FieldErrors;
-
-  /** This form's own errors, excluding its descendants'. */
-  readonly ownErrors: FieldErrors;
-
   /** When this form's validators run. */
   readonly validationMode: ValidationMode;
 
-  /** Write this form's value; `validateScope` selects how far validation runs. */
-  setValue(next: T, validateScope?: ValidateScope): void;
+  /**
+   * Write this form's value, either directly or as a function of its latest
+   * value. `validateScope` selects how far validation runs.
+   */
+  setValue(next: T | ((prev: T) => T), validateScope?: ValidateScope): void;
 
   /** Write this form's initial value (the dirtiness baseline). */
   setInitialValue(next: T): void;
@@ -48,15 +52,15 @@ export interface Form<T> {
 
   /**
    * Reset this subtree to `value` — any value, including `undefined` — making it
-   * the new initial value and clearing the subtree's errors; returns `value`.
+   * the new initial value and clearing the subtree's errors.
    */
-  reset(value: T, keepDirtyValues: boolean): T;
+  reset(value: T, options?: ResetOptions): void;
 
   /**
    * Reset this subtree to its current initial value, clearing the subtree's
-   * errors; returns that value.
+   * errors.
    */
-  resetToInitial(keepDirtyValues: boolean): T;
+  resetToInitial(options?: ResetOptions): void;
 
   /** Validate this form's subtree now; returns the aggregate errors. */
   validate(): FieldErrors;
@@ -70,8 +74,8 @@ export interface Form<T> {
 }
 
 /**
- * The privileged surface a combinator uses to implement a form type, reached
- * through {@link Form.internal}. Not part of the everyday read/write API.
+ * The surface a combinator uses to implement a form type, reached through
+ * {@link Form.internal}.
  */
 export interface FormInternal<T> {
   /** The store backing the root this form belongs to. */
@@ -80,82 +84,103 @@ export interface FormInternal<T> {
   /** This form's position in the tree. */
   readonly path: Path;
 
-  /**
-   * Build the `Form` for the child at `key`. A combinator calls this to hand
-   * each of its children a `Form` of its own: `read` extracts the child's value
-   * from this form's value, and `write` produces a new value of this form with
-   * one child's value replaced. The child lives one level deeper in the tree.
-   */
-  child<S>(key: Segment, read: (t: T) => S, write: (t: T, s: S) => T): Form<S>;
+  /** This form's current value, or absent when its position is gone. */
+  read(): Slot<T>;
+
+  /** Whether this form's subtree differs from its initial value. */
+  isDirty(): boolean;
+
+  /** The errors at and below this form. */
+  errors(): FieldErrors;
+
+  /** This form's own errors, excluding its descendants'. */
+  ownErrors(): FieldErrors;
 
   /**
-   * Declare how this form behaves — its validator, value equality, and how it
-   * decomposes into children. A combinator calls this to teach the store about
-   * the kind of form it implements; see {@link FormDescriptor}.
+   * A `Form` for each child `descriptor` decomposes `value` into, in
+   * decomposition order.
    */
-  register(descriptor: FormDescriptor<T>): void;
+  children<Key extends Json, Child>(
+    descriptor: Composite<T, Key, Child>,
+    value: T,
+  ): readonly {readonly key: Key; readonly control: Form<Child>}[];
 
-  /** Reindex this form's children by mapping each key to its new key (or `null` to drop). */
-  remapChildren(remap: (key: Segment) => Segment | null): void;
+  /**
+   * Declare how this form behaves; see {@link FormDescriptor}. A form has one
+   * declaration per {@link Registration}, and its latest is the one in force.
+   */
+  register(descriptor: FormDescriptor<T>, registration: Registration): void;
+
+  /**
+   * Withdraw the declaration made through `registration`, wherever the form has
+   * moved to since. A declaration another registration has replaced it with
+   * stands.
+   */
+  unregister(registration: Registration): void;
+  /**
+   * Replace this composite's value and say where its children went, as one
+   * edit. `edit` is given the latest value and returns the replacement together
+   * with a `remap` from each existing child's key to the key it holds now, or to
+   * `null` where the child is gone; returning `null` instead leaves the form
+   * untouched. Each surviving child keeps its declaration, errors, and initial
+   * value at its new key, and a child that is gone keeps none of them.
+   *
+   * @example
+   * // Drop element `i`, shifting those after it down one:
+   * form.internal.restructure<number>(prev => ({
+   *   value: prev.filter((_, j) => j !== i),
+   *   remap: j => (j < i ? j : j === i ? null : j - 1),
+   * }));
+   */
+  restructure<Key extends Json>(
+    edit: (prev: T) => Restructure<T, Key> | null,
+  ): void;
 }
 
-export function makeForm<T>(
-  store: FormStore,
-  path: Path,
-  read: (root: unknown) => T,
-  write: (root: unknown, value: T) => unknown,
-): Form<T> {
+// A position's type comes from the composite that decomposed into it, which the
+// store does not track: it holds every position as `unknown`.
+function typed<T>(slot: Slot): Slot<T> {
+  return slot as Slot<T>;
+}
+
+function isUpdater<T>(next: T | ((prev: T) => T)): next is (prev: T) => T {
+  return typeof next === 'function';
+}
+
+/**
+ * The handle for the position `steps` leads to: one step per composite descended
+ * through, each naming the child taken from it. The root of `store` is the
+ * position no steps lead to.
+ */
+export function makeForm<T>(store: FormStore, steps: Steps): Form<T> {
+  const path = pathOfSteps(steps);
+  const read = () => typed<T>(store.readAt(steps));
+
   return {
-    get value() {
-      return read(store.getSnapshot().value);
-    },
-    get initialValue() {
-      return read(store.getSnapshot().initialValue);
-    },
-    get isDirty() {
-      return store.getSnapshot().dirtyPrefixes.has(keyOf(path));
-    },
-    get errors() {
-      return store.aggregateErrorsAt(path);
-    },
-    get ownErrors() {
-      return store.ownErrorsAt(path);
-    },
     get validationMode() {
       return store.mode;
     },
 
     setValue(next, validateScope = 'up') {
-      const root = store.getSnapshot().value;
-      store.setValue(path, write(root, next), validateScope);
+      if (isUpdater(next)) {
+        const current = read();
+        if (!current.present) return;
+        store.setValue(steps, next(current.value), validateScope);
+      } else {
+        store.setValue(steps, next, validateScope);
+      }
     },
     setInitialValue(next) {
-      const root = store.getSnapshot().initialValue;
-      store.setInitialValue(write(root, next));
+      store.setInitialValue(steps, next);
     },
     onBlur() {
-      store.onBlur(path);
+      store.onBlur(steps);
     },
-    reset(value, keepDirtyValues) {
-      store.resetForm(
-        path,
-        read as (root: unknown) => unknown,
-        write as (root: unknown, s: unknown) => unknown,
-        value,
-        keepDirtyValues,
-      );
-      return value;
+    reset(value, options) {
+      store.resetForm(steps, value, options?.keepDirtyValues ?? false);
     },
-    resetToInitial(keepDirtyValues) {
-      const value = read(store.getSnapshot().initialValue);
-      store.resetForm(
-        path,
-        read as (root: unknown) => unknown,
-        write as (root: unknown, s: unknown) => unknown,
-        value,
-        keepDirtyValues,
-      );
-      return value;
+    resetToInitial(options) {
+      store.resetToInitial(steps, options?.keepDirtyValues ?? false);
     },
     validate() {
       return store.validateSubtree(path);
@@ -164,23 +189,41 @@ export function makeForm<T>(
     internal: {
       store,
       path,
-      child(key, childRead, childWrite) {
-        return makeForm(
-          store,
-          childPath(path, key),
-          root => childRead(read(root)),
-          (root, s) => write(root, childWrite(read(root), s)),
-        );
+      read,
+      isDirty() {
+        return store.isDirtyAt(path);
       },
-      register(descriptor) {
-        store.register(
-          path,
-          read as (root: unknown) => unknown,
-          descriptor as unknown as FormDescriptor,
-        );
+      errors() {
+        return store.aggregateErrorsAt(path);
       },
-      remapChildren(remap) {
-        store.remapChildren(path, remap);
+      ownErrors() {
+        return store.ownErrorsAt(path);
+      },
+      children<Key extends Json, Child>(
+        descriptor: Composite<T, Key, Child>,
+        value: T,
+      ) {
+        const out: {key: Key; control: Form<Child>}[] = [];
+        for (const [key] of descriptor.decompose(value)) {
+          out.push({
+            key,
+            control: makeForm<Child>(store, [...steps, step(key, descriptor)]),
+          });
+        }
+        return out;
+      },
+      register(descriptor, registration) {
+        store.register(steps, descriptor, registration);
+      },
+      unregister(registration) {
+        store.unregister(registration);
+      },
+      restructure(edit) {
+        const current = read();
+        if (!current.present) return;
+        const next = edit(current.value);
+        if (next === null) return;
+        store.restructure(steps, next);
       },
     },
   };
@@ -190,11 +233,5 @@ export function createRootForm<T>(
   initialValue: T,
   mode: ValidationMode,
 ): Form<T> {
-  const store = new FormStore(initialValue, mode);
-  return makeForm<T>(
-    store,
-    ROOT,
-    root => root as T,
-    (_root, v) => v,
-  );
+  return makeForm<T>(new FormStore(initialValue, mode), []);
 }

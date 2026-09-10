@@ -9,6 +9,7 @@ import {
   useField,
   useFieldArray,
   useFieldObject,
+  useFieldState,
   useForm,
 } from '..';
 import type {TestProps} from '../test-helpers/types';
@@ -59,9 +60,14 @@ const ArrayTest = ({
             }
           />
           <button onClick={() => remove(index)} title={`remove row ${index}`} />
+          <button
+            onClick={() => controlField.resetToInitial()}
+            title={`reset row ${index}`}
+          />
         </div>
       ))}
       <button onClick={() => append('')} title="add row" />
+      <button onClick={() => append('new')} title="add row with value" />
       <button
         onClick={() =>
           resetNewInitialValue === undefined
@@ -290,6 +296,31 @@ describe('FieldArray', () => {
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Form errors: Too many elements')).toBeTruthy();
     });
+
+    it('resets an appended row to the value it was appended with', async () => {
+      render(<ArrayTest initialValue={['a']} />);
+
+      await user.click(
+        screen.getByRole('button', {name: 'add row with value'}),
+      );
+      await user.type(screen.getByTestId('input-1'), 'x');
+      await user.click(screen.getByRole('button', {name: 'reset row 1'}));
+
+      expect(screen.getByTestId('input-1')).toHaveValue('new');
+    });
+
+    it('keeps the array dirty after an appended row is reset', async () => {
+      render(<ArrayTest initialValue={['a']} />);
+
+      await user.click(
+        screen.getByRole('button', {name: 'add row with value'}),
+      );
+      await user.type(screen.getByTestId('input-1'), 'x');
+      await user.click(screen.getByRole('button', {name: 'reset row 1'}));
+
+      expect(screen.queryByText('Field 1 dirty')).toBeNull();
+      expect(screen.getByText('Form dirty')).toBeTruthy();
+    });
   });
 
   describe('remove', () => {
@@ -352,6 +383,138 @@ describe('FieldArray', () => {
 
       expect(screen.getByText('Form valid')).toBeTruthy();
       expect(screen.queryByText('Form errors: Required')).toBeNull();
+    });
+
+    it('removes a row of objects while its fields are mounted', async () => {
+      type Row = {name: string};
+      const RowFields = ({
+        control,
+        name,
+      }: {
+        control: Control<Row>;
+        name: string;
+      }) => {
+        const {fields} = useFieldObject({control});
+        return <TextField name={name} parentControl={fields.name.control} />;
+      };
+      const Form = () => {
+        const {control} = useForm<Row[]>({
+          initialValue: [{name: 'a'}, {name: 'b'}],
+        });
+        const {fields, remove} = useFieldArray({control});
+        return (
+          <div>
+            {fields.map((field, i) => (
+              <div key={i}>
+                <RowFields control={field.control} name={i.toString()} />
+                <button onClick={() => remove(i)} title={`remove row ${i}`} />
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      render(<Form />);
+
+      await user.click(screen.getByRole('button', {name: 'remove row 1'}));
+
+      expect(screen.queryByTestId('input-1')).toBeNull();
+      expect(screen.getByTestId('input-0')).toHaveValue('a');
+    });
+
+    describe('with stable React keys', () => {
+      type Row = {n: string};
+      const RowFields = ({
+        control,
+        name,
+      }: {
+        control: Control<Row>;
+        name: string;
+      }) => {
+        const {fields} = useFieldObject({control});
+        const {isDirty} = useFieldState(control);
+        return (
+          <div>
+            <TextField
+              name={name}
+              parentControl={fields.n.control}
+              validate={value =>
+                value.length > 0
+                  ? NO_FIELD_ERRORS
+                  : new Set([{message: 'Required'}])
+              }
+            />
+            <p>{`row ${name}: ${isDirty ? 'dirty' : 'clean'}`}</p>
+          </div>
+        );
+      };
+      // Each row's identity — its React key — lives beside the form value, not
+      // in it, so removing a row shifts the values without changing any of them.
+      const Table = ({rows, ids: initialIds}: {rows: Row[]; ids: string[]}) => {
+        const {control} = useForm<Row[]>({initialValue: rows});
+        const {fields, remove} = useFieldArray({control});
+        const [ids, setIds] = React.useState(initialIds);
+        const removeAt = (i: number) => {
+          remove(i);
+          setIds(prev => prev.filter((_, j) => j !== i));
+        };
+        return (
+          <div>
+            {fields.map(({control: rowControl}, i) => (
+              <div key={ids[i]}>
+                <RowFields control={rowControl} name={ids[i]} />
+                <button
+                  onClick={() => removeAt(i)}
+                  title={`remove ${ids[i]}`}
+                />
+                <button
+                  onClick={() => rowControl.resetToInitial()}
+                  title={`reset ${ids[i]}`}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      it('leaves an unchanged surviving row clean', async () => {
+        render(<Table rows={[{n: 'a'}, {n: 'b'}]} ids={['A', 'B']} />);
+
+        await user.click(screen.getByRole('button', {name: 'remove A'}));
+
+        expect(screen.getByText('row B: clean')).toBeTruthy();
+      });
+
+      it('measures a surviving row against its own initial value', async () => {
+        render(<Table rows={[{n: 'a'}, {n: 'b'}]} ids={['A', 'B']} />);
+        await user.type(screen.getByTestId('input-B'), '!');
+
+        await user.click(screen.getByRole('button', {name: 'remove A'}));
+
+        expect(screen.getByTestId('input-B')).toHaveValue('b!');
+      });
+
+      it('resets a surviving row to its own initial value', async () => {
+        render(<Table rows={[{n: 'a'}, {n: 'b'}]} ids={['A', 'B']} />);
+        await user.type(screen.getByTestId('input-B'), '!');
+        await user.click(screen.getByRole('button', {name: 'remove A'}));
+
+        await user.click(screen.getByRole('button', {name: 'reset B'}));
+
+        expect(screen.getByTestId('input-B')).toHaveValue('b');
+      });
+
+      it("keeps a surviving row's error when an earlier row is removed", async () => {
+        render(
+          <Table rows={[{n: 'a'}, {n: 'b'}, {n: 'c'}]} ids={['A', 'B', 'C']} />,
+        );
+        await user.clear(screen.getByTestId('input-C'));
+        expect(screen.getByText('Field C errors: Required')).toBeTruthy();
+
+        await user.click(screen.getByRole('button', {name: 'remove B'}));
+
+        expect(screen.getByText('Field C errors: Required')).toBeTruthy();
+      });
     });
   });
 
@@ -758,6 +921,7 @@ describe('FieldArray', () => {
       control: Control<string[]>;
     }) => {
       const {fields} = useFieldArray({control});
+      const {isDirty} = useFieldState(control);
       return (
         <div>
           {fields.map((field, i) => (
@@ -767,7 +931,7 @@ describe('FieldArray', () => {
               parentControl={field.control}
             />
           ))}
-          <p>{`${name}: ${control.isDirty ? 'dirty' : 'clean'}`}</p>
+          <p>{`${name}: ${isDirty ? 'dirty' : 'clean'}`}</p>
         </div>
       );
     };

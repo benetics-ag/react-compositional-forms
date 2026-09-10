@@ -19,8 +19,10 @@
  * never an `undefined` standing in for a missing position.
  */
 
-import {Composite, FormDescriptor, isComposite} from './form-descriptor';
+import {Children, childrenOf} from './children';
+import {FormDescriptor, isComposite} from './form-descriptor';
 import {childPath, keyOf, Path, PathKey, ROOT, Segment} from './path';
+import {ABSENT, present, Slot} from './slot';
 
 /** The descriptor registered for the form at `path`, if any. */
 export type DescriptorAt = (path: Path) => FormDescriptor | undefined;
@@ -34,45 +36,17 @@ export type WalkResult = {
   readonly frozenInitials: ReadonlyMap<PathKey, unknown>;
 };
 
-/** A position a value tree either fills (`present`) or lacks. */
-type Slot =
-  | {readonly present: true; readonly value: unknown}
-  | {readonly present: false};
-const present = (value: unknown): Slot => ({present: true, value});
-const ABSENT: Slot = {present: false};
-
 /** Whether a leaf's own value is unchanged: its `equals`, or `Object.is`. */
-function leafEquals(
+export function leafEquals(
   desc: FormDescriptor | undefined,
 ): (a: unknown, b: unknown) => boolean {
-  return (desc && !isComposite(desc) && desc.equals) || Object.is;
+  const equals =
+    desc !== undefined && !isComposite(desc) ? desc.equals : undefined;
+  return equals === undefined ? Object.is : (a, b) => equals.call(desc, a, b);
 }
 
-/**
- * A composite's children keyed by their flattened path key, each carrying its
- * original segment (for descent and reconstruction) and its value.
- *
- * `null`/`undefined` isn't given dirtiness meaning here — that stays structural,
- * by key set. It's just not a container to take apart, so it yields no children;
- * a position that goes from `null` to a populated value reads as a grown key set.
- */
-function childrenByKey(
-  desc: Composite<unknown, Segment, unknown>,
-  value: unknown,
-): Map<PathKey, {segment: Segment; value: unknown}> {
-  const out = new Map<PathKey, {segment: Segment; value: unknown}>();
-  if (value == null) return out;
-  for (const ref of desc.decompose(value)) {
-    out.set(keyOf([ref.key]), {segment: ref.key, value: ref.read(value)});
-  }
-  return out;
-}
-
-/** Whether two child maps hold the same set of keys. */
-function sameKeys(
-  a: ReadonlyMap<PathKey, unknown>,
-  b: ReadonlyMap<PathKey, unknown>,
-): boolean {
+/** Whether two child tables hold the same set of keys. */
+function sameKeys(a: Children, b: Children): boolean {
   if (a.size !== b.size) return false;
   for (const k of a.keys()) if (!b.has(k)) return false;
   return true;
@@ -104,17 +78,16 @@ export function walkValue(
   prevFrozen: ReadonlyMap<PathKey, unknown>,
 ): WalkResult {
   const dirty = new Set<PathKey>();
-  let frozen = prevFrozen;
+  let frozen: ReadonlyMap<PathKey, unknown> = prevFrozen;
+  let grown: Map<PathKey, unknown> | undefined;
   const freeze = (k: PathKey, v: unknown) => {
-    if (frozen === prevFrozen) frozen = new Map(prevFrozen);
-    (frozen as Map<PathKey, unknown>).set(k, v);
+    if (grown === undefined) {
+      grown = new Map(prevFrozen);
+      frozen = grown;
+    }
+    grown.set(k, v);
   };
 
-  // `grown` marks a position with no counterpart in the initial structure — a
-  // collection element appended past its parent's initial children. Such a
-  // position has no baseline to measure against, so its first-seen value is
-  // frozen as its baseline (born clean, dirty once edited). The root is never
-  // grown.
   const walk = (
     v: unknown,
     iv: unknown,
@@ -139,19 +112,18 @@ export function walkValue(
       return isDirty;
     }
 
-    const current = childrenByKey(desc, v);
-    const base = childrenByKey(desc, baseline);
+    const current = childrenOf(desc, v);
+    const base = childrenOf(desc, baseline);
     let childrenDirty = false;
-    for (const [ck, {segment, value: childValue}] of current) {
-      const childGrown = !base.has(ck);
+    for (const [ck, {key, value: childValue}] of current) {
+      const inBase = base.get(ck);
+      const childGrown = inBase === undefined;
       if (
         walk(
           childValue,
-          // A grown child has no entry in `base`; the recursion freezes it and
-          // derives its own baseline, so the value passed here is a placeholder
-          // it overrides.
-          childGrown ? childValue : base.get(ck)!.value,
-          childPath(path, segment),
+          // A grown child derives its own baseline, overriding this one.
+          childGrown ? childValue : inBase.value,
+          childPath(path, key),
           childGrown,
         )
       ) {
@@ -159,8 +131,6 @@ export function walkValue(
       }
     }
 
-    // Own dirtiness of a composite is a change in its key set — an element grown
-    // or dropped since its baseline.
     const isDirty = !sameKeys(current, base) || childrenDirty;
     if (isDirty) dirty.add(fk);
     return isDirty;
@@ -212,52 +182,46 @@ function rebuild(
   if (!baseline.present) return value;
 
   if (desc === undefined || !isComposite(desc)) {
-    // Leaf: keep its current value when dirty against its baseline; when clean,
-    // take the reset value, or keep the current value where the reset omits this
-    // position. `equals` sees two real values — never an absent one.
     if (!leafEquals(desc)(value, baseline.value)) return value;
     return reset.present ? reset.value : value;
   }
 
-  // An untouched subtree has nothing dirty to keep, so it takes the reset whole
-  // (or stays as it is where the reset omits it).
+  // An untouched subtree has nothing dirty to keep.
   if (Object.is(value, baseline.value)) {
     return reset.present ? reset.value : value;
   }
 
-  const current = childrenByKey(desc, value);
-  const base = childrenByKey(desc, baseline.value);
+  const current = childrenOf(desc, value);
+  const base = childrenOf(desc, baseline.value);
   const resetChildren = reset.present
-    ? childrenByKey(desc, reset.value)
+    ? childrenOf(desc, reset.value)
     : undefined;
 
-  // The rebuilt key set is the current one when the composite grew or shrank
-  // (its own structure is dirty and wins), else the reset's (its structure wins
-  // where the subtree kept its shape).
+  // A composite that grew or shrank is itself dirty, so its key set is kept in
+  // preference to the reset's.
   const ownDirty = !sameKeys(current, base);
   const source = !ownDirty && resetChildren ? resetChildren : current;
 
   const merged: [Segment, unknown][] = [];
-  for (const [ck, {segment, value: fromSource}] of source) {
+  for (const [ck, {key, value: fromSource}] of source) {
     const inCurrent = current.get(ck);
     if (inCurrent === undefined) {
-      // Present only in the reset (the reset added it): take the reset value.
-      merged.push([segment, fromSource]);
+      merged.push([key, fromSource]);
       continue;
     }
-    const childInitial: Slot = base.has(ck)
-      ? present(base.get(ck)!.value)
-      : ABSENT;
-    const childReset: Slot = resetChildren?.has(ck)
-      ? present(resetChildren.get(ck)!.value)
-      : ABSENT;
+    const inBase = base.get(ck);
+    const childInitial: Slot =
+      inBase === undefined ? ABSENT : present(inBase.value);
+    const inReset = resetChildren?.get(ck);
+    const childReset: Slot =
+      inReset === undefined ? ABSENT : present(inReset.value);
     merged.push([
-      inCurrent.segment,
+      inCurrent.key,
       rebuild(
         inCurrent.value,
         childInitial,
         childReset,
-        childPath(path, inCurrent.segment),
+        childPath(path, inCurrent.key),
         descriptorAt,
         frozen,
       ),
@@ -272,7 +236,7 @@ function rebuild(
  */
 export function rebuildKeepDirty(
   value: unknown,
-  initialValue: unknown,
+  initial: Slot,
   resetValue: unknown,
   path: Path,
   descriptorAt: DescriptorAt,
@@ -280,7 +244,7 @@ export function rebuildKeepDirty(
 ): unknown {
   return rebuild(
     value,
-    present(initialValue),
+    initial,
     present(resetValue),
     path,
     descriptorAt,

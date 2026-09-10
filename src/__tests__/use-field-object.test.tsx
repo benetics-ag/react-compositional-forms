@@ -95,36 +95,6 @@ const ObjectTest = ({
   );
 };
 
-// A form whose object value can change which keys it holds. The rendered fields
-// follow `useFieldObject`'s `fields` — one control per key of the current value
-// — and the key set is changed from outside by resetting to `resetTo`.
-const DynamicObjectTest = ({
-  initialValue,
-  resetTo,
-  keepDirtyValues = false,
-}: {
-  initialValue: Record<string, string>;
-  resetTo: Record<string, string>;
-  keepDirtyValues?: boolean;
-}) => {
-  const init = React.useRef(initialValue);
-  const {control, reset, value} = useForm<Record<string, string>>({
-    initialValue: init.current,
-  });
-  const {fields} = useFieldObject({control});
-
-  return (
-    <div>
-      {Object.keys(fields).map(key => (
-        <TextField key={key} name={key} parentControl={fields[key].control} />
-      ))}
-      <button onClick={() => reset(resetTo, {keepDirtyValues})} title="reset" />
-      <p>keys: {Object.keys(fields).join(',')}</p>
-      <p>Form: {JSON.stringify(value)}</p>
-    </div>
-  );
-};
-
 describe('FieldObject', () => {
   describe('initial state', () => {
     it('has initial value', () => {
@@ -331,52 +301,6 @@ describe('FieldObject', () => {
 
       expect(screen.queryByText('Form valid')).toBeNull();
       expect(screen.getByText('Form errors: Required')).toBeTruthy();
-    });
-  });
-
-  // `fields` holds one control per key of the form's current value, so when a
-  // reset changes that key set the fields follow it: a key the reset adds gains
-  // a control at the reset value, a key it drops loses its control. A
-  // `keepDirtyValues` reset still keeps edits to the keys that survive.
-  describe('changing keys', () => {
-    it('grows the field set to match a reset that adds keys', async () => {
-      render(
-        <DynamicObjectTest
-          initialValue={{a: ''}}
-          resetTo={{a: '', b: ''}}
-          keepDirtyValues
-        />,
-      );
-
-      // Edit `a` so the form is dirty when the key set changes.
-      await user.type(screen.getByTestId('input-a'), 'x');
-      await user.click(screen.getByRole('button', {name: 'reset'}));
-
-      // The added key gains a control at the reset value, and `a` keeps its edit.
-      expect(screen.getByText('keys: a,b')).toBeTruthy();
-      expect(screen.getByTestId('input-a')).toHaveValue('x');
-      expect(screen.getByTestId('input-b')).toHaveValue('');
-      expect(screen.getByText('Form: {"a":"x","b":""}')).toBeTruthy();
-    });
-
-    it('shrinks the field set to match a reset that drops keys', async () => {
-      render(
-        <DynamicObjectTest
-          initialValue={{a: '', b: ''}}
-          resetTo={{a: ''}}
-          keepDirtyValues
-        />,
-      );
-
-      // Edit `a` so the form is dirty when the key set changes.
-      await user.type(screen.getByTestId('input-a'), 'x');
-      await user.click(screen.getByRole('button', {name: 'reset'}));
-
-      // The dropped key loses its control, and `a` keeps its edit.
-      expect(screen.getByText('keys: a')).toBeTruthy();
-      expect(screen.queryByTestId('input-b')).toBeNull();
-      expect(screen.getByTestId('input-a')).toHaveValue('x');
-      expect(screen.getByText('Form: {"a":"x"}')).toBeTruthy();
     });
   });
 

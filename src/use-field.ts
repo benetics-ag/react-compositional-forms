@@ -1,8 +1,8 @@
 import type {FieldErrors} from './field-errors';
 import {Form} from './form';
-import {Equals, Leaf, Validator} from './internal/form-descriptor';
+import {Leaf} from './internal/form-descriptor';
 import {
-  errorSetsEqual,
+  fieldStateEqual,
   useFormSlice,
   useRegisterDescriptor,
 } from './internal/use-store-slice';
@@ -107,33 +107,20 @@ export const useField = <T>({
   const customEquals = equalsFn !== Object.is;
   const descriptor: Leaf<T> | null =
     validate || customEquals
-      ? {
-          validate: validate as Validator<T> | undefined,
-          ...(customEquals ? {equals: equalsFn as Equals<T>} : {}),
-        }
+      ? {validate, ...(customEquals ? {equals: equalsFn} : {})}
       : null;
   useRegisterDescriptor(form, descriptor);
 
   const slice = useFormSlice(
     form,
-    () => ({
-      value: form.value,
-      isDirty: form.isDirty,
-      errors: form.errors,
-    }),
-    (a, b) =>
-      Object.is(a.value, b.value) &&
-      a.isDirty === b.isDirty &&
-      errorSetsEqual(a.errors, b.errors),
+    ({value, isDirty, errors}) => ({value, isDirty, errors}),
+    (a, b) => Object.is(a.value, b.value) && fieldStateEqual(a, b),
   );
 
   return {
     field: {
       value: slice.value,
       onChange: next => {
-        // Write only when the value actually changes, by the field's own
-        // equality — a value equal under `equalsFn` is not a change.
-        if (equalsFn(next, form.value)) return;
         form.setValue(next, form.validationMode === 'onChange' ? 'up' : 'none');
       },
       onBlur: () => form.onBlur(),
