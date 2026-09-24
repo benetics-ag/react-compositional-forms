@@ -405,8 +405,10 @@ export class FormStore {
     );
     const descriptor = this.descriptorAt(path);
     if (descriptor === undefined || !isComposite(descriptor)) return frozen;
+    const composite = readAlong(steps, snap.value);
+    if (!composite.present) return frozen;
 
-    for (const {key} of childrenOf(descriptor, snap.value).values()) {
+    for (const {key} of childrenOf(descriptor, composite.value).values()) {
       const moved = edit.remap(key);
       if (moved === null || segmentsEqual(moved, key)) continue;
       const movedKey = keyOf([...path, moved]);
