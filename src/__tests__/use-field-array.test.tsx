@@ -8,6 +8,7 @@ import {
   NO_FIELD_ERRORS,
   useField,
   useFieldArray,
+  useFieldMap,
   useFieldObject,
   useFieldState,
   useForm,
@@ -420,6 +421,39 @@ describe('FieldArray', () => {
 
       expect(screen.queryByTestId('input-1')).toBeNull();
       expect(screen.getByTestId('input-0')).toHaveValue('a');
+    });
+
+    it('removes a row of an array nested in a map', async () => {
+      const Rows = ({control}: {control: Control<string[]>}) => {
+        const {fields, remove} = useFieldArray({control});
+        return (
+          <div>
+            {fields.map(({control: rowControl}, i) => (
+              <div key={i}>
+                <TextField name={i.toString()} parentControl={rowControl} />
+                <button onClick={() => remove(i)} title={`remove row ${i}`} />
+              </div>
+            ))}
+          </div>
+        );
+      };
+      const Form = () => {
+        const {control} = useForm<Map<string, string[]>>({
+          initialValue: new Map([['rows', ['a', 'b']]]),
+        });
+        const {fields} = useFieldMap({control});
+        const rows = fields.get('rows');
+        return rows === undefined ? null : <Rows control={rows.control} />;
+      };
+
+      render(<Form />);
+      await user.type(screen.getByTestId('input-1'), '!');
+
+      await user.click(screen.getByRole('button', {name: 'remove row 0'}));
+
+      expect(screen.queryByTestId('input-1')).toBeNull();
+      expect(screen.getByTestId('input-0')).toHaveValue('b!');
+      expect(screen.getByText('Field 0 dirty')).toBeTruthy();
     });
 
     describe('with stable React keys', () => {
