@@ -22,12 +22,12 @@ import {childrenOf} from './children';
 import {aggregateErrors, keepDirtyErrors, withEntry} from './errors';
 import {FormDescriptor, isComposite} from './form-descriptor';
 import {
+  focusAlong,
   pathOfSteps,
   readAlong,
   readInitial,
   step,
   Steps,
-  writeAlong,
   writeInitial,
 } from './lens';
 import {
@@ -327,20 +327,15 @@ export class FormStore {
    * position the value no longer holds does nothing.
    */
   setValue(steps: Steps, next: unknown, scope: ValidateScope): void {
-    const current = readAlong(steps, this.snapshot.value);
-    if (!current.present) return;
+    const found = focusAlong(steps, this.snapshot.value);
+    if (!found.present) return;
+    const position = found.value;
     const path = pathOfSteps(steps);
-    if (leafEquals(this.descriptorAt(path))(next, current.value)) return;
-    const rebuilt = writeAlong(steps, this.snapshot.value, next);
-    if (!rebuilt.present) return;
+    if (leafEquals(this.descriptorAt(path))(next, position.current)) return;
+    const value = position.replace(next);
     this.commit({
-      value: rebuilt.value,
-      ownErrors: this.validateAs(
-        this.snapshot.ownErrors,
-        path,
-        rebuilt.value,
-        scope,
-      ),
+      value,
+      ownErrors: this.validateAs(this.snapshot.ownErrors, path, value, scope),
     });
   }
 
@@ -352,8 +347,11 @@ export class FormStore {
    */
   restructure(steps: Steps, edit: Restructure<unknown, Segment>): void {
     const snap = this.snapshot;
-    const rebuilt = writeAlong(steps, snap.value, edit.value);
-    if (!rebuilt.present || rebuilt.value === snap.value) return;
+    const found = focusAlong(steps, snap.value);
+    if (!found.present) return;
+    const position = found.value;
+    const value = position.replace(edit.value);
+    if (value === snap.value) return;
     const path = pathOfSteps(steps);
     const forms = new Map<PathKey, RegisteredForm>();
     for (const [key, form] of this.forms) {
@@ -380,22 +378,24 @@ export class FormStore {
     this.forms = forms;
     const remap = (key: Segment) => edit.remap(key);
     this.commit({
-      value: rebuilt.value,
+      value,
       ownErrors: this.validateUp(
         remapUnder(snap.ownErrors, path, remap),
         path,
-        rebuilt.value,
+        value,
       ),
-      frozenInitials: this.baselinesAfter(steps, edit, snap),
+      frozenInitials: this.baselinesAfter(steps, position.current, edit, snap),
     });
   }
 
   // The initial values in force once `edit` has moved the children of the
-  // composite at `steps`. A child that moved is measured against the initial
-  // value it had before the move, which the initial value tree still holds at
-  // its old key, so that value is frozen at its new one.
+  // composite at `steps`, whose value before the edit is `before`. A child that
+  // moved is measured against the initial value it had before the move, which
+  // the initial value tree still holds at its old key, so that value is frozen
+  // at its new one.
   private baselinesAfter(
     steps: Steps,
+    before: unknown,
     edit: Restructure<unknown, Segment>,
     snap: Snapshot,
   ): ReadonlyMap<PathKey, unknown> {
@@ -405,10 +405,8 @@ export class FormStore {
     );
     const descriptor = this.descriptorAt(path);
     if (descriptor === undefined || !isComposite(descriptor)) return frozen;
-    const composite = readAlong(steps, snap.value);
-    if (!composite.present) return frozen;
 
-    for (const {key} of childrenOf(descriptor, composite.value).values()) {
+    for (const {key} of childrenOf(descriptor, before).values()) {
       const moved = edit.remap(key);
       if (moved === null || segmentsEqual(moved, key)) continue;
       const movedKey = keyOf([...path, moved]);
@@ -470,8 +468,9 @@ export class FormStore {
    */
   resetForm(steps: Steps, resetSlice: unknown, keepDirtyValues: boolean): void {
     const snap = this.snapshot;
-    const current = readAlong(steps, snap.value);
-    if (!current.present) return;
+    const found = focusAlong(steps, snap.value);
+    if (!found.present) return;
+    const position = found.value;
     const baselines = writeInitial(steps, snap, resetSlice);
     if (!baselines.present) return;
     const path = pathOfSteps(steps);
@@ -485,10 +484,8 @@ export class FormStore {
     );
 
     if (!keepDirtyValues) {
-      const rebuilt = writeAlong(steps, snap.value, resetSlice);
-      if (!rebuilt.present) return;
       this.commit({
-        value: rebuilt.value,
+        value: position.replace(resetSlice),
         initialValue: baselines.value.initialValue,
         ownErrors: clearUnder(snap.ownErrors, path),
         frozenInitials,
@@ -498,23 +495,22 @@ export class FormStore {
 
     // Decide keep-vs-reset against the baselines in force before the reset.
     const newSlice = rebuildKeepDirty(
-      current.value,
+      position.current,
       readInitial(steps, snap),
       resetSlice,
       path,
       this.descriptorAt,
       snap.frozenInitials,
     );
-    const rebuilt = writeAlong(steps, snap.value, newSlice);
-    if (!rebuilt.present) return;
+    const value = position.replace(newSlice);
     const newDirty = walkValue(
-      rebuilt.value,
+      value,
       baselines.value.initialValue,
       this.descriptorAt,
       frozenInitials,
     ).dirtyPrefixes;
     this.commit({
-      value: rebuilt.value,
+      value,
       initialValue: baselines.value.initialValue,
       ownErrors: keepDirtyErrors(snap.ownErrors, path, newDirty),
       frozenInitials,

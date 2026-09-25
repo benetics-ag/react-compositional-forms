@@ -61,29 +61,51 @@ export function readAlong(steps: Steps, root: unknown, from = 0): Slot {
 }
 
 /**
- * Rebuild `root` with the position at the end of `steps` replaced by `next`,
- * starting from step `from`.
- *
- * @returns The rebuilt root, or absent when some step's key is missing.
+ * A position in a value tree: its value, and a way to rebuild the tree with it
+ * replaced.
  */
-export function writeAlong(
+export type Position = {
+  readonly current: unknown;
+
+  /**
+   * The tree `focusAlong` started from, rebuilt with this position's value
+   * replaced by `next`.
+   */
+  replace(next: unknown): unknown;
+};
+
+/**
+ * Find the position at the end of `steps`, starting from `root` at step `from`.
+ *
+ * @returns The position, or absent when some step's key is missing.
+ */
+export function focusAlong(
   steps: Steps,
   root: unknown,
-  next: unknown,
   from = 0,
-): Slot {
-  if (from === steps.length) return present(next);
+): Slot<Position> {
+  if (from === steps.length) {
+    return present({current: root, replace: next => next});
+  }
   const {pathKey, descriptor} = steps[from];
   const table = childrenOf(descriptor, root);
   const child = table.get(pathKey);
   if (child === undefined) return ABSENT;
-  const rebuilt = writeAlong(steps, child.value, next, from + 1);
-  if (!rebuilt.present) return rebuilt;
-  const entries: [Segment, unknown][] = [];
-  for (const [k, c] of table) {
-    entries.push([c.key, k === pathKey ? rebuilt.value : c.value]);
-  }
-  return present(descriptor.build(entries));
+  const inner = focusAlong(steps, child.value, from + 1);
+  if (!inner.present) return inner;
+  return present({
+    current: inner.value.current,
+    replace: next => {
+      const entries: [Segment, unknown][] = [];
+      for (const [k, c] of table) {
+        entries.push([
+          c.key,
+          k === pathKey ? inner.value.replace(next) : c.value,
+        ]);
+      }
+      return descriptor.build(entries);
+    },
+  });
 }
 
 // The longest frozen prefix of `steps`: the nearest grown ancestor (or the
@@ -120,19 +142,18 @@ export function writeInitial(
   const {initialValue, frozenInitials} = baselines;
   const prefix = frozenPrefix(steps, frozenInitials);
   if (prefix === undefined) {
-    const rebuilt = writeAlong(steps, initialValue, next);
-    return rebuilt.present
-      ? present({initialValue: rebuilt.value, frozenInitials})
+    const found = focusAlong(steps, initialValue);
+    return found.present
+      ? present({initialValue: found.value.replace(next), frozenInitials})
       : ABSENT;
   }
-  const rebuilt = writeAlong(
+  const found = focusAlong(
     steps,
     frozenInitials.get(prefix.key),
-    next,
     prefix.length,
   );
-  if (!rebuilt.present) return ABSENT;
+  if (!found.present) return ABSENT;
   const nextFrozen = new Map(frozenInitials);
-  nextFrozen.set(prefix.key, rebuilt.value);
+  nextFrozen.set(prefix.key, found.value.replace(next));
   return present({initialValue, frozenInitials: nextFrozen});
 }
